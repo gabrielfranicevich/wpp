@@ -1,103 +1,111 @@
-use reqwest::Client;
-
-use super::models::*;
 use crate::error::WppError;
+use crate::whatsapp::models::{
+    Chat,
+    PairingCodeResponse,
+    QrCodeResponse,
+    Session,
+};
+use crate::whatsapp::openwa::client::OpenWAClient;
 
-/// HTTP client for the OpenWA REST API.
+/// WhatsApp backend used by the application layer.
 ///
-/// Session ID is passed per-call so the same client can operate on
-/// any session (needed for `wpp switch`, `wpp login`, etc.).
-pub struct OpenWAClient {
-    http: Client,
-    base_url: String,
+/// The rest of wpp depends on this type instead of OpenWA-specific clients.
+/// A future native WhatsApp backend can be added here without changing the
+/// command/service layer.
+pub struct WhatsAppClient {
+    backend: Backend,
 }
 
-impl OpenWAClient {
-    pub fn new(base_url: &str) -> Self {
+enum Backend {
+    OpenWA(OpenWAClient),
+}
+
+impl WhatsAppClient {
+    pub fn openwa(
+        base_url: &str,
+        api_key: Option<String>,
+    ) -> Self {
         Self {
-            http: Client::new(),
-            base_url: base_url.trim_end_matches('/').to_string(),
+            backend: Backend::OpenWA(
+                OpenWAClient::new(base_url, api_key)
+            ),
         }
     }
 
-    // ── helpers ──────────────────────────────────────────────────
-
-    fn url(&self, path: &str) -> String {
-        format!("{}/api{}", self.base_url, path)
-    }
-
-    fn session_url(&self, id: &str, path: &str) -> String {
-        self.url(&format!("/sessions/{}{}", id, path))
-    }
-
-    /// Turn a non-2xx response into a WppError::Api.
-    async fn check(resp: reqwest::Response) -> Result<reqwest::Response, WppError> {
-        if resp.status().is_success() {
-            return Ok(resp);
+    pub async fn create_session(
+        &self,
+        name: &str,
+    ) -> Result<Session, WppError> {
+        match &self.backend {
+            Backend::OpenWA(client) => {
+                client.create_session(name).await
+            }
         }
-        let status = resp.status().as_u16();
-        let body = resp.text().await.unwrap_or_default();
-        Err(WppError::Api {
-            status,
-            message: body,
-        })
     }
 
-    // ── session lifecycle ───────────────────────────────────────
-
-    /// POST /api/sessions  → create a new session.
-    pub async fn create_session(&self, name: &str) -> Result<Session, WppError> {
-        let resp = self
-            .http
-            .post(&self.url("/sessions"))
-            .json(&serde_json::json!({ "name": name }))
-            .send()
-            .await?;
-        Ok(Self::check(resp).await?.json().await?)
+    pub async fn start_session(
+        &self,
+        session_id: &str,
+    ) -> Result<Session, WppError> {
+        match &self.backend {
+            Backend::OpenWA(client) => {
+                client.start_session(session_id).await
+            }
+        }
     }
 
-    /// POST /api/sessions/:id/start
-    pub async fn start_session(&self, id: &str) -> Result<Session, WppError> {
-        let resp = self
-            .http
-            .post(&self.session_url(id, "/start"))
-            .send()
-            .await?;
-        Ok(Self::check(resp).await?.json().await?)
+    pub async fn get_session(
+        &self,
+        session_id: &str,
+    ) -> Result<Session, WppError> {
+        match &self.backend {
+            Backend::OpenWA(client) => {
+                client.get_session(session_id).await
+            }
+        }
     }
 
-    /// GET /api/sessions/:id
-    pub async fn get_session(&self, id: &str) -> Result<Session, WppError> {
-        let resp = self
-            .http
-            .get(&self.session_url(id, ""))
-            .send()
-            .await?;
-        Ok(Self::check(resp).await?.json().await?)
+    pub async fn get_qr(
+        &self,
+        session_id: &str,
+    ) -> Result<QrCodeResponse, WppError> {
+        match &self.backend {
+            Backend::OpenWA(client) => {
+                client.get_qr(session_id).await
+            }
+        }
     }
 
-    /// GET /api/sessions/:id/qr  → raw QR string to encode locally.
-    pub async fn get_qr(&self, id: &str) -> Result<QrCodeResponse, WppError> {
-        let resp = self
-            .http
-            .get(&self.session_url(id, "/qr"))
-            .send()
-            .await?;
-        Ok(Self::check(resp).await?.json().await?)
-    }
-
-    /// POST /api/sessions/:id/pairing-code
     pub async fn request_pairing_code(
         &self,
-        id: &str,
+        session_id: &str,
         phone: &str,
     ) -> Result<PairingCodeResponse, WppError> {
-        let resp = self
-            .http
-            .post(&self.session_url(id, "/pairing-code"))
-            .json(&serde_json::json!({ "phoneNumber": phone }))
-            .send()
-            .await?;
-        Ok(Self::check(resp).await?.json().await?)
+        match &self.backend {
+            Backend::OpenWA(client) => {
+                client
+                    .request_pairing_code(session_id, phone)
+                    .await
+            }
+        }
+    }
+
+    pub async fn list_chats(
+        &self,
+        session_id: &str,
+        limit: usize,
+        offset: usize,
+    ) -> Result<Vec<Chat>, WppError> {
+        match &self.backend {
+            Backend::OpenWA(client) => {
+                client
+                    .list_chats(
+                        session_id,
+                        limit,
+                        offset,
+                    )
+                    .await
+            }
+        }
     }
 }

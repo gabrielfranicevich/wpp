@@ -3,7 +3,7 @@ use crossterm::style::Stylize;
 use std::io::Write;
 
 use crate::app::config::{Config, SessionEntry};
-use crate::whatsapp::client::OpenWAClient;
+use crate::whatsapp::client::WhatsAppClient;
 
 /// `wpp login [--phone NUMBER] [--alias NAME]`
 ///
@@ -25,23 +25,40 @@ pub async fn run(phone: Option<String>, alias: String) -> Result<()> {
         return Ok(());
     }
 
-    let client = OpenWAClient::new(&config.base_url);
-
+    let api_key = config.openwa_api_key();
+    let client = WhatsAppClient::openwa(
+        &config.base_url,
+        api_key.clone(),
+    );
     // ── 1. Create session in OpenWA ────────────────────────────
     eprintln!("{}", "  Creating session...".dark_grey());
     let session_name = format!("wpp-{}", alias);
     let session = match client.create_session(&session_name).await {
         Ok(s) => s,
         Err(e) => {
-            eprintln!(
-                "{} Could not connect to OpenWA at {}",
-                "✗".red().bold(),
-                config.base_url
-            );
-            eprintln!(
-                "  {}",
-                "Make sure OpenWA is running (e.g. `cd openwa && npm run dev`)".dark_grey()
-            );
+            match &e {
+                crate::error::WppError::Api { status: 401, .. } => {
+                    eprintln!(
+                        "{} OpenWA authentication failed (401)",
+                        "✗".red().bold()
+                    );
+                    eprintln!(
+                        "  {}",
+                        "Set WPP_OPENWA_API_KEY or OPENWA_API_KEY (or place .api-key in openwa/data/).".dark_grey()
+                    );
+                }
+                _ => {
+                    eprintln!(
+                        "{} Could not connect to OpenWA at {}",
+                        "✗".red().bold(),
+                        config.base_url
+                    );
+                    eprintln!(
+                        "  {}",
+                        "Make sure OpenWA is running (e.g. `cd openwa && npm run dev`)".dark_grey()
+                    );
+                }
+            }
             return Err(e.into());
         }
     };
@@ -58,7 +75,25 @@ pub async fn run(phone: Option<String>, alias: String) -> Result<()> {
     if let Some(ref phone_number) = phone {
         // Pairing-code flow
         eprintln!("{}", "  Requesting pairing code...".dark_grey());
-        let pairing = client.request_pairing_code(&id, phone_number).await?;
+        let mut pairing = None;
+        for _ in 0..15 {
+            match client.request_pairing_code(&id, phone_number).await {
+                Ok(p) => {
+                    pairing = Some(p);
+                    break;
+                }
+                Err(_) => {
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                }
+            }
+        }
+
+        let pairing = pairing.ok_or_else(|| {
+            anyhow::anyhow!(
+                "Could not get pairing code after 30 s. Is OpenWA running with ENGINE_TYPE=baileys?"
+            )
+        })?;
+
         println!();
         println!(
             "  Enter this code in WhatsApp → Linked Devices → Link with phone number:"
@@ -129,6 +164,9 @@ pub async fn run(phone: Option<String>, alias: String) -> Result<()> {
                         },
                     );
                     config.active_session = Some(alias);
+                    if config.api_key.is_none() {
+                        config.api_key = api_key;
+                    }
                     config.save()?;
 
                     authenticated = true;

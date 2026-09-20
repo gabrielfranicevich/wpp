@@ -1,31 +1,40 @@
-use serde::Deserialize;
+/// Domain-level chat model used by wpp.
+///
+/// This deliberately does not mirror OpenWA's DTOs one-to-one.
+#[derive(Debug, Clone)]
+pub struct Chat {
+    pub id: String,
+    pub name: String,
+    pub is_group: bool,
+    pub unread_count: u32,
+    pub last_message: Option<String>,
+    pub timestamp: i64,
+    pub kind: String,
+    pub archived: bool,
+    pub pinned: bool,
+    pub muted: bool,
+}
 
-/// Session info returned by OpenWA REST API.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+/// WhatsApp session used by application code.
+#[derive(Debug, Clone)]
 pub struct Session {
     pub id: String,
     pub name: String,
     pub status: String,
-    #[serde(default)]
     pub phone: Option<String>,
-    #[serde(default)]
     pub push_name: Option<String>,
-    #[serde(default)]
     pub engine_loaded: Option<bool>,
 }
 
-/// QR code response from GET /api/sessions/:id/qr
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+/// QR response.
+#[derive(Debug, Clone)]
 pub struct QrCodeResponse {
     pub qr_code: String,
     pub status: String,
 }
 
-/// Pairing code response from POST /api/sessions/:id/pairing-code
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+/// Phone pairing response.
+#[derive(Debug, Clone)]
 pub struct PairingCodeResponse {
     pub code: String,
 }
