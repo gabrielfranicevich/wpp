@@ -209,67 +209,89 @@ pub async fn run(phone: Option<String>, alias: String) -> Result<()> {
 /// inverted (dark terminals: spaces for dark modules, █ for light)
 /// so phone cameras see proper dark-on-light contrast.
 fn render_qr(data: &str) -> Result<()> {
-    let code = qrcode::QrCode::new(data.as_bytes())?;
+    // The API returns a data URL: "data:image/png;base64,<b64>"
+    // Decode it and render the PNG pixels as terminal blocks.
+    if let Some(b64) = data.strip_prefix("data:image/png;base64,") {
+        return render_qr_from_png_b64(b64);
+    }
+    if let Some(b64) = data.strip_prefix("data:image/jpeg;base64,").or_else(|| data.strip_prefix("data:image/jpg;base64,")) {
+        // Fallback: try as raw QR string anyway (shouldn't happen)
+        let _ = b64;
+    }
+
+    // Fallback: treat data as raw QR content and generate it ourselves
+    let code = qrcode::QrCode::with_error_correction_level(data.as_bytes(), qrcode::EcLevel::L)?;
     let modules = code.to_colors();
     let w = code.width();
 
-    let quiet = 2; // quiet-zone modules on each side
+    let quiet = 2;
     let total_w = w + 2 * quiet;
 
     println!();
-
-    // Top quiet zone (one full-block line)
     print!("    ");
-    for _ in 0..total_w {
-        print!("██");
-    }
+    for _ in 0..total_w { print!("██"); }
     println!();
 
-    // Body — two rows per printed line
     let mut row = 0usize;
     while row < w {
         print!("    ");
-
-        // Left quiet zone
-        for _ in 0..quiet {
-            print!("██");
-        }
-
+        for _ in 0..quiet { print!("██"); }
         for col in 0..w {
             let top = modules[row * w + col];
-            let bot = if row + 1 < w {
-                modules[(row + 1) * w + col]
-            } else {
-                qrcode::Color::Light
-            };
-
-            // Inverted: light QR → █ (bright fg), dark QR → space (dark bg)
+            let bot = if row + 1 < w { modules[(row + 1) * w + col] } else { qrcode::Color::Light };
             match (top, bot) {
                 (qrcode::Color::Light, qrcode::Color::Light) => print!("██"),
-                (qrcode::Color::Light, qrcode::Color::Dark) => print!("▀▀"),
-                (qrcode::Color::Dark, qrcode::Color::Light) => print!("▄▄"),
-                (qrcode::Color::Dark, qrcode::Color::Dark) => print!("  "),
+                (qrcode::Color::Light, qrcode::Color::Dark)  => print!("▀▀"),
+                (qrcode::Color::Dark,  qrcode::Color::Light) => print!("▄▄"),
+                (qrcode::Color::Dark,  qrcode::Color::Dark)  => print!("  "),
             }
         }
-
-        // Right quiet zone
-        for _ in 0..quiet {
-            print!("██");
-        }
+        for _ in 0..quiet { print!("██"); }
         println!();
-
         row += 2;
     }
 
-    // Bottom quiet zone
     print!("    ");
-    for _ in 0..total_w {
-        print!("██");
+    for _ in 0..total_w { print!("██"); }
+    println!();
+
+    Ok(())
+}
+
+/// Decode a base64-encoded PNG QR code image and render it in the terminal
+/// using half-block Unicode characters (▀ / ▄ / █ / space).
+fn render_qr_from_png_b64(b64: &str) -> Result<()> {
+    use base64::Engine as _;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(b64)?;
+    let img = image::load_from_memory_with_format(&bytes, image::ImageFormat::Png)?
+        .into_luma8();
+
+    let (w, h) = img.dimensions();
+
+    // We print two pixel rows per terminal line using ▀/▄/█/space.
+    println!();
+    let mut y = 0u32;
+    while y < h {
+        print!("  ");
+        for x in 0..w {
+            let top_dark = img.get_pixel(x, y).0[0] < 128;
+            let bot_dark = if y + 1 < h { img.get_pixel(x, y + 1).0[0] < 128 } else { false };
+            match (top_dark, bot_dark) {
+                (true,  true)  => print!("█"),
+                (true,  false) => print!("▀"),
+                (false, true)  => print!("▄"),
+                (false, false) => print!(" "),
+            }
+        }
+        println!();
+        y += 2;
     }
     println!();
 
     Ok(())
 }
+
+
 
 /// Format pairing code with a dash in the middle: "ABCD-EFGH"
 fn format_pairing_code(code: &str) -> String {
