@@ -1,11 +1,13 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use anyhow::{Context, Result};
 use crossterm::style::Stylize;
 
 use crate::whatsapp::models::Chat;
 
 const NAME_WIDTH: usize = 30;
 const PREVIEW_WIDTH: usize = 64;
+const QR_QUIET_ZONE: usize = 2;
 
 pub fn render_chats(chats: &[Chat]) {
   if chats.is_empty() {
@@ -59,6 +61,154 @@ pub fn render_chats(chats: &[Chat]) {
       NAME_WIDTH = NAME_WIDTH,
     );
   }
+}
+
+/// Decode the QR image returned by OpenWA, recover its payload,
+/// and generate a fresh QR matrix from that payload.
+///
+/// We intentionally never render the original image pixels.
+/// This avoids losing QR information through image scaling or
+/// terminal pixel conversion.
+pub fn render_qr(data: &str) -> Result<()> {
+  let b64 = data
+    .strip_prefix("data:image/png;base64,")
+    .or_else(|| data.strip_prefix("data:image/jpeg;base64,"))
+    .or_else(|| data.strip_prefix("data:image/jpg;base64,"))
+    .context("OpenWA returned an unsupported QR image format")?;
+
+  use base64::Engine as _;
+
+  let bytes = base64::engine::general_purpose::STANDARD
+    .decode(b64)
+    .context("failed to decode QR image base64")?;
+
+  let image = image::load_from_memory(&bytes)
+    .context("failed to decode QR image")?
+    .into_luma8();
+
+  let mut decoder = quircs::Quirc::default();
+
+  let codes = decoder.identify(
+    image.width() as usize,
+    image.height() as usize,
+    &image,
+  );
+
+  let mut payload = None;
+
+  for code in codes {
+    let code = code.context("failed to detect QR code")?;
+
+    let decoded = code
+      .decode()
+      .context("failed to decode QR code")?;
+
+    let text = String::from_utf8(decoded.payload)
+      .context("QR payload is not valid UTF-8")?;
+
+    payload = Some(text);
+    break;
+  }
+
+  let payload = payload.context("no readable QR code found in OpenWA image")?;
+
+  render_qr_payload(&payload)
+}
+
+/// Generate a new QR code from the decoded payload and render
+/// it using Unicode half-block characters.
+///
+/// Dark modules become terminal background pixels, while light
+/// modules become terminal foreground pixels. This produces a
+/// white-on-black QR suitable for cameras and terminals.
+fn render_qr_payload(payload: &str) -> Result<()> {
+  let code = qrcode::QrCode::with_error_correction_level(
+    payload.as_bytes(),
+    qrcode::EcLevel::L,
+  )
+  .context("failed to generate terminal QR code")?;
+
+  let modules = code.to_colors();
+  let width = code.width();
+  let total_width = width + QR_QUIET_ZONE * 2;
+
+  println!();
+
+  // Top quiet zone.
+  for _ in 0..QR_QUIET_ZONE {
+    print!("  ");
+
+    for _ in 0..total_width {
+      print!("  ");
+    }
+
+    println!();
+  }
+
+  let mut row = 0usize;
+
+  while row < width {
+    print!("  ");
+
+    // Left quiet zone.
+    for _ in 0..QR_QUIET_ZONE {
+      print!("  ");
+    }
+
+    for col in 0..width {
+      let top = modules[row * width + col];
+
+      let bottom = if row + 1 < width {
+        modules[(row + 1) * width + col]
+      } else {
+        qrcode::Color::Light
+      };
+
+      match (top, bottom) {
+        // Both modules are dark: terminal background is dark.
+        (qrcode::Color::Dark, qrcode::Color::Dark) => {
+          print!(" ");
+        }
+
+        // Top is light, bottom is dark.
+        (qrcode::Color::Light, qrcode::Color::Dark) => {
+          print!("▀");
+        }
+
+        // Top is dark, bottom is light.
+        (qrcode::Color::Dark, qrcode::Color::Light) => {
+          print!("▄");
+        }
+
+        // Both modules are light.
+        (qrcode::Color::Light, qrcode::Color::Light) => {
+          print!("█");
+        }
+      }
+    }
+
+    // Right quiet zone.
+    for _ in 0..QR_QUIET_ZONE {
+      print!("  ");
+    }
+
+    println!();
+
+    row += 2;
+  }
+
+  // Bottom quiet zone.
+  for _ in 0..QR_QUIET_ZONE {
+    print!("  ");
+
+    for _ in 0..total_width {
+      print!("  ");
+    }
+
+    println!();
+  }
+
+  Ok(())
 }
 
 fn normalize_preview(value: &str) -> String {

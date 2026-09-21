@@ -48,8 +48,12 @@ impl OpenWAClient {
   ) -> reqwest::RequestBuilder {
     match &self.api_key {
       Some(api_key) => {
-        builder.header("X-API-Key", api_key)
+        builder.header(
+          "X-API-Key",
+          api_key,
+        )
       }
+
       None => builder,
     }
   }
@@ -62,6 +66,7 @@ impl OpenWAClient {
     }
 
     let status = resp.status().as_u16();
+
     let body = resp
       .text()
       .await
@@ -144,7 +149,38 @@ impl OpenWAClient {
     let builder = self
       .http
       .get(self.url(
-        &format!("/sessions/{session_id}")
+        &format!(
+          "/sessions/{session_id}"
+        )
+      ));
+
+    let response = self
+      .request(builder)
+      .send()
+      .await?;
+
+    let session: OpenWASession =
+      Self::check(response)
+        .await?
+        .json()
+        .await?;
+
+    Ok(session.into())
+  }
+
+  /// POST /api/sessions/:id/logout
+  ///
+  /// Logs the WhatsApp device out and tears down the OpenWA session.
+  pub async fn logout(
+    &self,
+    session_id: &str,
+  ) -> Result<Session, WppError> {
+    let builder = self
+      .http
+      .post(self.url(
+        &format!(
+          "/sessions/{session_id}/logout"
+        )
       ));
 
     let response = self
@@ -194,7 +230,11 @@ impl OpenWAClient {
     session_id: &str,
     phone: &str,
   ) -> Result<PairingCodeResponse, WppError> {
-    let clean_phone: String = phone.chars().filter(|c| c.is_ascii_digit()).collect();
+    let clean_phone: String = phone
+      .chars()
+      .filter(|c| c.is_ascii_digit())
+      .collect();
+
     let builder = self
       .http
       .post(self.url(
@@ -211,7 +251,8 @@ impl OpenWAClient {
       .send()
       .await?;
 
-    let pairing: OpenWAPairingCodeResponse =
+    let pairing:
+      OpenWAPairingCodeResponse =
       Self::check(response)
         .await?
         .json()
@@ -270,8 +311,12 @@ impl From<OpenWASession> for Session {
   }
 }
 
-impl From<OpenWAQrCodeResponse> for QrCodeResponse {
-  fn from(response: OpenWAQrCodeResponse) -> Self {
+impl From<OpenWAQrCodeResponse>
+  for QrCodeResponse
+{
+  fn from(
+    response: OpenWAQrCodeResponse
+  ) -> Self {
     Self {
       qr_code: response.qr_code,
       status: response.status,
@@ -282,7 +327,9 @@ impl From<OpenWAQrCodeResponse> for QrCodeResponse {
 impl From<OpenWAPairingCodeResponse>
   for PairingCodeResponse
 {
-  fn from(response: OpenWAPairingCodeResponse) -> Self {
+  fn from(
+    response: OpenWAPairingCodeResponse
+  ) -> Self {
     Self {
       code: response.pairing_code,
     }

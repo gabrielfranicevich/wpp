@@ -9,6 +9,7 @@ mod whatsapp;
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
   let args = cli::Cli::parse();
+
   match args.command {
     cli::Command::Login {
       phone_pos,
@@ -21,10 +22,19 @@ async fn main() -> anyhow::Result<()> {
       } else {
         phone.or(phone_pos).filter(|p| {
           let p_lower = p.trim().to_lowercase();
-          p_lower != "qr" && p_lower != "-qr" && p_lower != "--qr" && p_lower != "-q"
+
+          p_lower != "qr"
+            && p_lower != "-qr"
+            && p_lower != "--qr"
+            && p_lower != "-q"
         })
       };
+
       cli::login::run(phone, alias).await?;
+    }
+
+    cli::Command::Logout { target } => {
+      cli::logout::run(target).await?;
     }
 
     cli::Command::Switch { target } => {

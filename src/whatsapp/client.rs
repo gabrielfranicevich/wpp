@@ -27,7 +27,10 @@ impl WhatsAppClient {
   ) -> Self {
     Self {
       backend: Backend::OpenWA(
-        OpenWAClient::new(base_url, api_key)
+        OpenWAClient::new(
+          base_url,
+          api_key,
+        )
       ),
     }
   }
@@ -65,6 +68,17 @@ impl WhatsAppClient {
     }
   }
 
+  pub async fn logout(
+    &self,
+    session_id: &str,
+  ) -> Result<Session, WppError> {
+    match &self.backend {
+      Backend::OpenWA(client) => {
+        client.logout(session_id).await
+      }
+    }
+  }
+
   pub async fn get_qr(
     &self,
     session_id: &str,
@@ -84,7 +98,10 @@ impl WhatsAppClient {
     match &self.backend {
       Backend::OpenWA(client) => {
         client
-          .request_pairing_code(session_id, phone)
+          .request_pairing_code(
+            session_id,
+            phone,
+          )
           .await
       }
     }

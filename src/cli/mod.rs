@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 
 pub mod chats;
 pub mod login;
+pub mod logout;
 pub mod switch;
 
 #[derive(Parser)]
@@ -36,9 +37,15 @@ pub enum Command {
     #[arg(short, long)]
     qr: bool,
 
-    /// Alias for this session (e.g. "personal", "business")
-    #[arg(short, long, default_value = "default")]
-    alias: String,
+    /// Alias for this session; if omitted, one is generated after authentication
+    #[arg(short, long)]
+    alias: Option<String>,
+  },
+
+  /// Log out a WhatsApp session
+  Logout {
+    /// Session alias or phone number; omit to use the active session
+    target: Option<String>,
   },
 
   /// Switch active session or list all sessions
