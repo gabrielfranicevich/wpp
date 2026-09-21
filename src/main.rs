@@ -8,41 +8,46 @@ mod whatsapp;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
-    let args = cli::Cli::parse();
-    match args.command {
-        cli::Command::Login {
-            phone_pos,
-            phone,
-            qr,
-            alias,
-        } => {
-            let phone = if qr {
-                None
-            } else {
-                phone.or(phone_pos).filter(|p| {
-                    let p_lower = p.trim().to_lowercase();
-                    p_lower != "qr" && p_lower != "-qr" && p_lower != "--qr" && p_lower != "-q"
-                })
-            };
-            cli::login::run(phone, alias).await?;
-        }
-
-        cli::Command::Switch { target } => {
-            cli::switch::run(target)?;
-        }
-
-        cli::Command::Chats { unread } => {
-            cli::chats::run(unread).await?;
-        }
-
-        cli::Command::Open { .. }
-        | cli::Command::Send { .. }
-        | cli::Command::Search { .. }
-        | cli::Command::Listen
-        | cli::Command::Sync { .. } => {
-            eprintln!("Not yet implemented — coming in the next sprint.");
-        }
+  let args = cli::Cli::parse();
+  match args.command {
+    cli::Command::Login {
+      phone_pos,
+      phone,
+      qr,
+      alias,
+    } => {
+      let phone = if qr {
+        None
+      } else {
+        phone.or(phone_pos).filter(|p| {
+          let p_lower = p.trim().to_lowercase();
+          p_lower != "qr" && p_lower != "-qr" && p_lower != "--qr" && p_lower != "-q"
+        })
+      };
+      cli::login::run(phone, alias).await?;
     }
 
-    Ok(())
+    cli::Command::Switch { target } => {
+      cli::switch::run(target)?;
+    }
+
+    cli::Command::Chats {
+      limit,
+      all,
+      unread,
+      filter,
+    } => {
+      cli::chats::run(limit, all, unread, filter).await?;
+    }
+
+    cli::Command::Open { .. }
+    | cli::Command::Send { .. }
+    | cli::Command::Search { .. }
+    | cli::Command::Listen
+    | cli::Command::Sync { .. } => {
+      eprintln!("Not yet implemented — coming in the next sprint.");
+    }
+  }
+
+  Ok(())
 }

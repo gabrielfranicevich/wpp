@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 
 pub mod chats;
 pub mod login;
@@ -6,85 +6,102 @@ pub mod switch;
 
 #[derive(Parser)]
 #[command(
-    name = "wpp",
-    about = "WhatsApp from the terminal",
-    version
+  name = "wpp",
+  about = "WhatsApp from the terminal",
+  version
 )]
 pub struct Cli {
-    #[command(subcommand)]
-    pub command: Command,
+  #[command(subcommand)]
+  pub command: Command,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+pub enum ChatFilter {
+  Unread,
 }
 
 #[derive(Subcommand)]
 pub enum Command {
-    /// Log in to WhatsApp (QR code or phone pairing)
-    Login {
-        /// Phone number for pairing code (or omit / pass 'qr' for QR code)
-        #[arg(value_name = "PHONE")]
-        phone_pos: Option<String>,
+  /// Log in to WhatsApp (QR code or phone pairing)
+  Login {
+    /// Phone number for pairing code (or omit / pass 'qr' for QR code)
+    #[arg(value_name = "PHONE")]
+    phone_pos: Option<String>,
 
-        /// Use pairing code with this phone number instead of QR
-        #[arg(short, long)]
-        phone: Option<String>,
+    /// Use pairing code with this phone number instead of QR
+    #[arg(short, long)]
+    phone: Option<String>,
 
-        /// Request QR code login explicitly
-        #[arg(short, long)]
-        qr: bool,
+    /// Request QR code login explicitly
+    #[arg(short, long)]
+    qr: bool,
 
-        /// Alias for this session (e.g. "personal", "business")
-        #[arg(short, long, default_value = "default")]
-        alias: String,
-    },
+    /// Alias for this session (e.g. "personal", "business")
+    #[arg(short, long, default_value = "default")]
+    alias: String,
+  },
 
-    /// Switch active session or list all sessions
-    Switch {
-        /// Session alias or phone number (omit to list)
-        target: Option<String>,
-    },
+  /// Switch active session or list all sessions
+  Switch {
+    /// Session alias or phone number (omit to list)
+    target: Option<String>,
+  },
 
-    /// List chats (most recent first)
-    Chats {
-        /// Show only unread chats
-        #[arg(long)]
-        unread: bool,
-    },
+  /// List chats (most recent first)
+  Chats {
+    /// Maximum number of chats to inspect
+    #[arg(long, conflicts_with = "all")]
+    limit: Option<usize>,
 
-    /// Open a chat history
-    Open {
-        /// Contact name or phone number
-        who: String,
+    /// Fetch all chats
+    #[arg(long)]
+    all: bool,
 
-        /// Show only unread messages (oldest first)
-        #[arg(long)]
-        unread: bool,
-    },
+    /// Return up to N unread chats
+    #[arg(long, conflicts_with = "filter")]
+    unread: bool,
 
-    /// Send a text message
-    Send {
-        /// Contact name or phone number
-        who: String,
+    /// Filter the selected chats
+    #[arg(long, value_enum)]
+    filter: Option<ChatFilter>,
+  },
 
-        /// Message text (multiple words joined)
-        message: Vec<String>,
-    },
+  /// Open a chat history
+  Open {
+    /// Contact name or phone number
+    who: String,
 
-    /// Search chats by name or number
-    Search {
-        /// Search query
-        query: String,
-    },
+    /// Show only unread messages (oldest first)
+    #[arg(long)]
+    unread: bool,
+  },
 
-    /// Listen for incoming messages in real time
-    Listen,
+  /// Send a text message
+  Send {
+    /// Contact name or phone number
+    who: String,
 
-    /// Sync messages to local cache
-    Sync {
-        /// Max messages per chat
-        #[arg(long)]
-        limit: Option<usize>,
+    /// Message text (multiple words joined)
+    message: Vec<String>,
+  },
 
-        /// Only sync these contacts (comma-separated names or numbers)
-        #[arg(long)]
-        who: Option<String>,
-    },
+  /// Search chats by name or number
+  Search {
+    /// Search query
+    query: String,
+  },
+
+  /// Listen for incoming messages in real time
+  Listen,
+
+  /// Sync messages to local cache
+  Sync {
+    /// Max messages per chat
+    #[arg(long)]
+    limit: Option<usize>,
+
+    /// Only sync these contacts (comma-separated names or numbers)
+    #[arg(long)]
+    who: Option<String>,
+  },
 }
