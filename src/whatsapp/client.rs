@@ -1,6 +1,7 @@
 use crate::error::WppError;
 use crate::whatsapp::models::{
   Chat,
+  MessagePage,
   PairingCodeResponse,
   QrCodeResponse,
   Session,
@@ -30,7 +31,7 @@ impl WhatsAppClient {
         OpenWAClient::new(
           base_url,
           api_key,
-        )
+        ),
       ),
     }
   }
@@ -41,7 +42,9 @@ impl WhatsAppClient {
   ) -> Result<Session, WppError> {
     match &self.backend {
       Backend::OpenWA(client) => {
-        client.create_session(name).await
+        client
+          .create_session(name)
+          .await
       }
     }
   }
@@ -52,7 +55,9 @@ impl WhatsAppClient {
   ) -> Result<Session, WppError> {
     match &self.backend {
       Backend::OpenWA(client) => {
-        client.start_session(session_id).await
+        client
+          .start_session(session_id)
+          .await
       }
     }
   }
@@ -63,7 +68,9 @@ impl WhatsAppClient {
   ) -> Result<Session, WppError> {
     match &self.backend {
       Backend::OpenWA(client) => {
-        client.get_session(session_id).await
+        client
+          .get_session(session_id)
+          .await
       }
     }
   }
@@ -74,7 +81,9 @@ impl WhatsAppClient {
   ) -> Result<Session, WppError> {
     match &self.backend {
       Backend::OpenWA(client) => {
-        client.logout(session_id).await
+        client
+          .logout(session_id)
+          .await
       }
     }
   }
@@ -85,7 +94,9 @@ impl WhatsAppClient {
   ) -> Result<QrCodeResponse, WppError> {
     match &self.backend {
       Backend::OpenWA(client) => {
-        client.get_qr(session_id).await
+        client
+          .get_qr(session_id)
+          .await
       }
     }
   }
@@ -120,6 +131,27 @@ impl WhatsAppClient {
             session_id,
             limit,
             offset,
+          )
+          .await
+      }
+    }
+  }
+
+  pub async fn list_messages(
+    &self,
+    session_id: &str,
+    chat_id: &str,
+    limit: usize,
+    after: Option<&str>,
+  ) -> Result<MessagePage, WppError> {
+    match &self.backend {
+      Backend::OpenWA(client) => {
+        client
+          .list_messages(
+            session_id,
+            chat_id,
+            limit,
+            after,
           )
           .await
       }

@@ -2,6 +2,7 @@ use reqwest::{Client, Response};
 
 use super::models::{
   ChatSummary,
+  MessageListResponse,
   PairingCodeResponse as OpenWAPairingCodeResponse,
   QrCodeResponse as OpenWAQrCodeResponse,
   Session as OpenWASession,
@@ -10,6 +11,9 @@ use super::models::{
 use crate::error::WppError;
 use crate::whatsapp::models::{
   Chat,
+  Message,
+  MessageDirection,
+  MessagePage,
   PairingCodeResponse,
   QrCodeResponse,
   Session,
@@ -65,7 +69,8 @@ impl OpenWAClient {
       return Ok(resp);
     }
 
-    let status = resp.status().as_u16();
+    let status =
+      resp.status().as_u16();
 
     let body = resp
       .text()
@@ -124,7 +129,7 @@ impl OpenWAClient {
       .post(self.url(
         &format!(
           "/sessions/{session_id}/start"
-        )
+        ),
       ));
 
     let response = self
@@ -151,7 +156,7 @@ impl OpenWAClient {
       .get(self.url(
         &format!(
           "/sessions/{session_id}"
-        )
+        ),
       ));
 
     let response = self
@@ -180,7 +185,7 @@ impl OpenWAClient {
       .post(self.url(
         &format!(
           "/sessions/{session_id}/logout"
-        )
+        ),
       ));
 
     let response = self
@@ -207,7 +212,7 @@ impl OpenWAClient {
       .get(self.url(
         &format!(
           "/sessions/{session_id}/qr"
-        )
+        ),
       ));
 
     let response = self
@@ -240,7 +245,7 @@ impl OpenWAClient {
       .post(self.url(
         &format!(
           "/sessions/{session_id}/pairing-code"
-        )
+        ),
       ))
       .json(&serde_json::json!({
         "phoneNumber": clean_phone
@@ -273,7 +278,7 @@ impl OpenWAClient {
       .get(self.url(
         &format!(
           "/sessions/{session_id}/chats"
-        )
+        ),
       ))
       .query(&[
         ("limit", limit),
@@ -296,17 +301,110 @@ impl OpenWAClient {
       .map(Chat::from)
       .collect())
   }
+
+  /// GET /api/sessions/:id/messages
+  ///
+  /// OpenWA returns messages newest -> oldest.
+  /// `after` is the id of the oldest message in the
+  /// previously loaded page, so it is used as a keyset cursor.
+  pub async fn list_messages(
+    &self,
+    session_id: &str,
+    chat_id: &str,
+    limit: usize,
+    after: Option<&str>,
+  ) -> Result<MessagePage, WppError> {
+    let limit = limit.clamp(1, 100);
+
+    let mut params = vec![
+      (
+        "chatId",
+        chat_id.to_string(),
+      ),
+      (
+        "limit",
+        limit.to_string(),
+      ),
+      (
+        "inlineMedia",
+        "false".to_string(),
+      ),
+    ];
+
+    if let Some(after) = after {
+      params.push((
+        "after",
+        after.to_string(),
+      ));
+    }
+
+    let builder = self
+      .http
+      .get(self.url(
+        &format!(
+          "/sessions/{session_id}/messages"
+        ),
+      ))
+      .query(&params);
+
+    let response = self
+      .request(builder)
+      .send()
+      .await?;
+
+    let response:
+      MessageListResponse =
+      Self::check(response)
+        .await?
+        .json()
+        .await?;
+
+    let messages = response
+      .messages
+      .into_iter()
+      .map(|message| Message {
+        id: message.id,
+        chat_id: message.chat_id,
+        from: message.from,
+        to: message.to,
+        body: message.body,
+        kind: message.kind,
+        direction:
+          if message
+            .direction
+            .eq_ignore_ascii_case(
+              "outgoing",
+            )
+          {
+            MessageDirection::Outgoing
+          } else {
+            MessageDirection::Incoming
+          },
+        author: message.author,
+        timestamp: message.timestamp,
+        status: message.status,
+      })
+      .collect();
+
+    Ok(MessagePage {
+      messages,
+      total: response.total,
+    })
+  }
 }
 
 impl From<OpenWASession> for Session {
-  fn from(session: OpenWASession) -> Self {
+  fn from(
+    session: OpenWASession,
+  ) -> Self {
     Self {
       id: session.id,
       name: session.name,
       status: session.status,
       phone: session.phone,
       push_name: session.push_name,
-      engine_loaded: session.engine_loaded,
+      engine_loaded:
+        session.engine_loaded,
     }
   }
 }
@@ -315,7 +413,7 @@ impl From<OpenWAQrCodeResponse>
   for QrCodeResponse
 {
   fn from(
-    response: OpenWAQrCodeResponse
+    response: OpenWAQrCodeResponse,
   ) -> Self {
     Self {
       qr_code: response.qr_code,
@@ -328,7 +426,7 @@ impl From<OpenWAPairingCodeResponse>
   for PairingCodeResponse
 {
   fn from(
-    response: OpenWAPairingCodeResponse
+    response: OpenWAPairingCodeResponse,
   ) -> Self {
     Self {
       code: response.pairing_code,
@@ -337,18 +435,26 @@ impl From<OpenWAPairingCodeResponse>
 }
 
 impl From<ChatSummary> for Chat {
-  fn from(chat: ChatSummary) -> Self {
+  fn from(
+    chat: ChatSummary,
+  ) -> Self {
     Self {
       id: chat.id,
       name: chat.name,
       is_group: chat.is_group,
-      unread_count: chat.unread_count,
-      last_message: chat.last_message,
-      timestamp: chat.timestamp,
+      unread_count:
+        chat.unread_count,
+      last_message:
+        chat.last_message,
+      timestamp:
+        chat.timestamp,
       kind: chat.kind,
-      archived: chat.archived,
-      pinned: chat.pinned,
-      muted: chat.muted,
+      archived:
+        chat.archived,
+      pinned:
+        chat.pinned,
+      muted:
+        chat.muted,
     }
   }
 }

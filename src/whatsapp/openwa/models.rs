@@ -18,6 +18,48 @@ pub struct Session {
   pub engine_loaded: Option<bool>,
 }
 
+/// Persisted message returned by OpenWA.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageRecord {
+  pub id: String,
+
+  #[serde(default)]
+  pub session_id: String,
+
+  #[serde(default)]
+  pub wa_message_id: Option<String>,
+
+  pub chat_id: String,
+
+  pub from: String,
+
+  pub to: String,
+
+  #[serde(default)]
+  pub body: Option<String>,
+
+  #[serde(rename = "type")]
+  pub kind: String,
+
+  pub direction: String,
+
+  #[serde(default)]
+  pub author: Option<String>,
+
+  #[serde(default)]
+  pub timestamp: Option<i64>,
+
+  pub status: String,
+}
+
+/// Response returned by the persisted message-list endpoint.
+#[derive(Debug, Clone, Deserialize)]
+pub struct MessageListResponse {
+  pub messages: Vec<MessageRecord>,
+  pub total: usize,
+}
+
 /// QR code response from OpenWA.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]

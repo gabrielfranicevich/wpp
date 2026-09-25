@@ -4,6 +4,7 @@ pub mod chats;
 pub mod login;
 pub mod logout;
 pub mod switch;
+pub mod open;
 
 #[derive(Parser)]
 #[command(

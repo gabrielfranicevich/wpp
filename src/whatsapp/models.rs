@@ -15,6 +15,32 @@ pub struct Chat {
   pub muted: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct Message {
+    pub id: String,
+    pub chat_id: String,
+    pub from: String,
+    pub to: String,
+    pub body: Option<String>,
+    pub kind: String,
+    pub direction: MessageDirection,
+    pub author: Option<String>,
+    pub timestamp: Option<i64>,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MessageDirection {
+    Incoming,
+    Outgoing,
+}
+
+#[derive(Debug, Clone)]
+pub struct MessagePage {
+    pub messages: Vec<Message>,
+    pub total: usize,
+}
+
 /// WhatsApp session used by application code.
 #[derive(Debug, Clone)]
 pub struct Session {

@@ -50,8 +50,11 @@ async fn main() -> anyhow::Result<()> {
       cli::chats::run(limit, all, unread, filter).await?;
     }
 
-    cli::Command::Open { .. }
-    | cli::Command::Send { .. }
+    cli::Command::Open { who, unread} =>{
+      cli::open::run(who, unread).await?;
+    }
+
+    cli::Command::Send { .. }
     | cli::Command::Search { .. }
     | cli::Command::Listen
     | cli::Command::Sync { .. } => {
