@@ -43,7 +43,10 @@ impl OpenWAClient {
   }
 
   fn url(&self, path: &str) -> String {
-    format!("{}/api{}", self.base_url, path)
+    format!("{}{}",
+      self.base_url,
+      format!("/api{path}")
+    )
   }
 
   fn request(
@@ -171,6 +174,55 @@ impl OpenWAClient {
         .await?;
 
     Ok(session.into())
+  }
+
+  /// GET /api/sessions
+  ///
+  /// Fetch every session from OpenWA, following the API's
+  /// pagination until all sessions have been retrieved.
+  pub async fn list_sessions(
+    &self,
+  ) -> Result<Vec<Session>, WppError> {
+    const PAGE_SIZE: usize = 1000;
+
+    let mut offset = 0usize;
+    let mut sessions = Vec::new();
+
+    loop {
+      let builder = self
+        .http
+        .get(self.url("/sessions"))
+        .query(&[
+          ("limit", PAGE_SIZE),
+          ("offset", offset),
+        ]);
+
+      let response = self
+        .request(builder)
+        .send()
+        .await?;
+
+      let page: Vec<OpenWASession> =
+        Self::check(response)
+          .await?
+          .json()
+          .await?;
+
+      let page_len = page.len();
+
+      sessions.extend(
+        page.into_iter()
+          .map(Session::from),
+      );
+
+      if page_len < PAGE_SIZE {
+        break;
+      }
+
+      offset += page_len;
+    }
+
+    Ok(sessions)
   }
 
   /// POST /api/sessions/:id/logout
@@ -448,7 +500,8 @@ impl From<ChatSummary> for Chat {
         chat.last_message,
       timestamp:
         chat.timestamp,
-      kind: chat.kind,
+      kind:
+        chat.kind,
       archived:
         chat.archived,
       pinned:

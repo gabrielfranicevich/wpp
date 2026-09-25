@@ -3,8 +3,9 @@ use clap::{Parser, Subcommand, ValueEnum};
 pub mod chats;
 pub mod login;
 pub mod logout;
-pub mod switch;
 pub mod open;
+pub mod session;
+pub mod switch;
 
 #[derive(Parser)]
 #[command(
@@ -54,6 +55,9 @@ pub enum Command {
     /// Session alias or phone number (omit to list)
     target: Option<String>,
   },
+
+  /// List all OpenWA sessions and show which ones are known by wpp
+  Session,
 
   /// List chats (most recent first)
   Chats {

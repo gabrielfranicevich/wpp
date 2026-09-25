@@ -41,16 +41,29 @@ async fn main() -> anyhow::Result<()> {
       cli::switch::run(target)?;
     }
 
+    cli::Command::Session => {
+      cli::session::run().await?;
+    }
+
     cli::Command::Chats {
       limit,
       all,
       unread,
       filter,
     } => {
-      cli::chats::run(limit, all, unread, filter).await?;
+      cli::chats::run(
+        limit,
+        all,
+        unread,
+        filter,
+      )
+      .await?;
     }
 
-    cli::Command::Open { who, unread} =>{
+    cli::Command::Open {
+      who,
+      unread,
+    } => {
       cli::open::run(who, unread).await?;
     }
 
@@ -58,7 +71,9 @@ async fn main() -> anyhow::Result<()> {
     | cli::Command::Search { .. }
     | cli::Command::Listen
     | cli::Command::Sync { .. } => {
-      eprintln!("Not yet implemented — coming in the next sprint.");
+      eprintln!(
+        "Not yet implemented — coming in the next sprint."
+      );
     }
   }
 

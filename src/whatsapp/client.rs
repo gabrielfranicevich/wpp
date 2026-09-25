@@ -75,6 +75,18 @@ impl WhatsAppClient {
     }
   }
 
+  pub async fn list_sessions(
+    &self,
+  ) -> Result<Vec<Session>, WppError> {
+    match &self.backend {
+      Backend::OpenWA(client) => {
+        client
+          .list_sessions()
+          .await
+      }
+    }
+  }
+
   pub async fn logout(
     &self,
     session_id: &str,
