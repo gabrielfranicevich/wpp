@@ -41,8 +41,8 @@ async fn main() -> anyhow::Result<()> {
       cli::switch::run(target)?;
     }
 
-    cli::Command::Session => {
-      cli::session::run().await?;
+    cli::Command::Session { delete } => {
+      cli::session::run(delete).await?;
     }
 
     cli::Command::Chats {

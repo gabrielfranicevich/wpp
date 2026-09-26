@@ -56,8 +56,16 @@ pub enum Command {
     target: Option<String>,
   },
 
-  /// List all OpenWA sessions and show which ones are known by wpp
-  Session,
+  /// List or delete OpenWA sessions
+  Session {
+    /// Delete the selected OpenWA session
+    #[arg(
+      short = 'D',
+      long = "delete",
+      value_name = "TARGET"
+    )]
+    delete: Option<String>,
+  },
 
   /// List chats (most recent first)
   Chats {

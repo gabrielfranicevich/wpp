@@ -72,8 +72,11 @@ impl Config {
       return Ok(Self::default());
     }
 
-    let content = std::fs::read_to_string(&path)?;
-    let config: Config = toml::from_str(&content)?;
+    let content =
+      std::fs::read_to_string(&path)?;
+
+    let config: Config =
+      toml::from_str(&content)?;
 
     Ok(config)
   }
@@ -86,7 +89,9 @@ impl Config {
       std::fs::create_dir_all(parent)?;
     }
 
-    let content = toml::to_string_pretty(self)?;
+    let content =
+      toml::to_string_pretty(self)?;
+
     std::fs::write(&path, content)?;
 
     Ok(())
@@ -99,8 +104,12 @@ impl Config {
   /// 2. `OPENWA_API_KEY` environment variable
   /// 3. `api_key` in config file
   /// 4. Auto-discovery from local OpenWA files (`openwa/data/.api-key`)
-  pub fn openwa_api_key(&self) -> Option<String> {
-    Self::resolve_api_key(self.api_key.as_deref())
+  pub fn openwa_api_key(
+    &self,
+  ) -> Option<String> {
+    Self::resolve_api_key(
+      self.api_key.as_deref()
+    )
   }
 
   /// Resolve the API key from environment, config or local files.
@@ -137,13 +146,21 @@ impl Config {
 
     // Local development fallback: check for OpenWA bootstrap .api-key file
     let mut candidates = vec![
-      PathBuf::from("openwa/data/.api-key"),
+      PathBuf::from(
+        "openwa/data/.api-key"
+      ),
       PathBuf::from("data/.api-key"),
-      PathBuf::from("../openwa/data/.api-key"),
-      PathBuf::from("../../openwa/data/.api-key"),
+      PathBuf::from(
+        "../openwa/data/.api-key"
+      ),
+      PathBuf::from(
+        "../../openwa/data/.api-key"
+      ),
     ];
 
-    if let Ok(exe) = std::env::current_exe() {
+    if let Ok(exe) =
+      std::env::current_exe()
+    {
       if let Some(dir) = exe
         .parent()
         .and_then(|p| p.parent())
@@ -181,18 +198,22 @@ impl Config {
   pub fn active_entry(
     &self,
   ) -> Option<(&str, &SessionEntry)> {
-    let alias = self.active_session.as_deref()?;
+    let alias =
+      self.active_session.as_deref()?;
 
     self.sessions
       .get(alias)
-      .map(|entry| (alias, entry))
+      .map(|entry| {
+        (alias, entry)
+      })
   }
 
   /// Get the active session's OpenWA UUID, or error.
   pub fn require_active_session(
     &self,
   ) -> anyhow::Result<&SessionEntry> {
-    self.active_entry()
+    self
+      .active_entry()
       .map(|(_, entry)| entry)
       .ok_or_else(|| {
         anyhow::anyhow!(
@@ -205,22 +226,32 @@ impl Config {
   pub fn find_session<'a>(
     &'a self,
     query: &'a str,
-  ) -> Option<(&'a str, &'a SessionEntry)> {
-    if let Some(entry) = self.sessions.get(query) {
+  ) -> Option<(
+    &'a str,
+    &'a SessionEntry,
+  )> {
+    if let Some(entry) =
+      self.sessions.get(query)
+    {
       return Some((query, entry));
     }
 
     self.sessions.iter().find_map(
       |(alias, entry)| {
-        entry.phone.as_deref().and_then(|phone| {
-          if phone.contains(query)
-            || query.contains(phone)
-          {
-            Some((alias.as_str(), entry))
-          } else {
-            None
-          }
-        })
+        entry.phone.as_deref().and_then(
+          |phone| {
+            if phone.contains(query)
+              || query.contains(phone)
+            {
+              Some((
+                alias.as_str(),
+                entry,
+              ))
+            } else {
+              None
+            }
+          },
+        )
       },
     )
   }
@@ -265,9 +296,12 @@ impl Config {
     let mut suffix = 2usize;
 
     loop {
-      let candidate = format!("{base}-{suffix}");
+      let candidate =
+        format!("{base}-{suffix}");
 
-      if !self.sessions.contains_key(&candidate) {
+      if !self.sessions.contains_key(
+        &candidate,
+      ) {
         return candidate;
       }
 
@@ -282,13 +316,54 @@ impl Config {
     &mut self,
     alias: &str,
   ) -> Option<SessionEntry> {
-    let removed = self.sessions.remove(alias);
+    let removed =
+      self.sessions.remove(alias);
 
-    if self.active_session.as_deref() == Some(alias) {
+    if self.active_session.as_deref()
+      == Some(alias)
+    {
       self.active_session = None;
     }
 
     removed
+  }
+
+  /// Remove every local alias pointing to the same
+  /// OpenWA session ID.
+  ///
+  /// This intentionally operates at the session-ID level,
+  /// so it already behaves correctly if multiple aliases
+  /// eventually point to one OpenWA session.
+  pub fn remove_sessions_by_id(
+    &mut self,
+    session_id: &str,
+  ) -> Vec<(
+    String,
+    SessionEntry,
+  )> {
+    let aliases: Vec<String> =
+      self
+        .sessions
+        .iter()
+        .filter_map(|(alias, entry)| {
+          if entry.id == session_id {
+            Some(alias.clone())
+          } else {
+            None
+          }
+        })
+        .collect();
+
+    aliases
+      .into_iter()
+      .filter_map(|alias| {
+        self
+          .remove_session(&alias)
+          .map(|entry| {
+            (alias, entry)
+          })
+      })
+      .collect()
   }
 }
 
@@ -331,7 +406,8 @@ mod tests {
 
   #[test]
   fn next_session_alias_avoids_phone_collision() {
-    let mut config = Config::default();
+    let mut config =
+      Config::default();
 
     config.sessions.insert(
       "5493511234567".to_string(),
@@ -353,7 +429,8 @@ mod tests {
 
   #[test]
   fn next_available_alias_avoids_default_collision() {
-    let mut config = Config::default();
+    let mut config =
+      Config::default();
 
     config.sessions.insert(
       "default".to_string(),
@@ -373,7 +450,8 @@ mod tests {
 
   #[test]
   fn remove_active_session_clears_active_alias() {
-    let mut config = Config::default();
+    let mut config =
+      Config::default();
 
     config.sessions.insert(
       "personal".to_string(),
@@ -384,7 +462,9 @@ mod tests {
       Some("personal".to_string());
 
     let removed =
-      config.remove_session("personal");
+      config.remove_session(
+        "personal"
+      );
 
     assert!(removed.is_some());
     assert!(config.sessions.is_empty());
@@ -393,7 +473,8 @@ mod tests {
 
   #[test]
   fn remove_non_active_session_keeps_active_alias() {
-    let mut config = Config::default();
+    let mut config =
+      Config::default();
 
     config.sessions.insert(
       "personal".to_string(),
@@ -409,15 +490,84 @@ mod tests {
       Some("personal".to_string());
 
     let removed =
-      config.remove_session("business");
+      config.remove_session(
+        "business"
+      );
 
     assert!(removed.is_some());
+
     assert_eq!(
       config.active_session.as_deref(),
       Some("personal")
     );
+
     assert!(
-      config.sessions.contains_key("personal")
+      config
+        .sessions
+        .contains_key("personal")
     );
+  }
+
+  #[test]
+  fn remove_sessions_by_id_removes_all_matching_aliases() {
+    let mut config =
+      Config::default();
+
+    config.sessions.insert(
+      "personal".to_string(),
+      SessionEntry {
+        id: "shared-session".to_string(),
+        phone: None,
+        push_name: None,
+      },
+    );
+
+    config.sessions.insert(
+      "phone".to_string(),
+      SessionEntry {
+        id: "shared-session".to_string(),
+        phone: None,
+        push_name: None,
+      },
+    );
+
+    config.sessions.insert(
+      "business".to_string(),
+      SessionEntry {
+        id: "other-session".to_string(),
+        phone: None,
+        push_name: None,
+      },
+    );
+
+    config.active_session =
+      Some("personal".to_string());
+
+    let removed =
+      config.remove_sessions_by_id(
+        "shared-session"
+      );
+
+    assert_eq!(removed.len(), 2);
+
+    assert!(
+      !config.sessions.contains_key(
+        "personal"
+      )
+    );
+
+    assert!(
+      !config.sessions.contains_key(
+        "phone"
+      )
+    );
+
+    assert!(
+      config.sessions.contains_key(
+        "business"
+      )
+    );
+
+    assert!(config.active_session.is_none());
   }
 }

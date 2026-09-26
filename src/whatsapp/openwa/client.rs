@@ -42,10 +42,14 @@ impl OpenWAClient {
     }
   }
 
-  fn url(&self, path: &str) -> String {
-    format!("{}{}",
+  fn url(
+    &self,
+    path: &str,
+  ) -> String {
+    format!(
+      "{}/api{}",
       self.base_url,
-      format!("/api{path}")
+      path
     )
   }
 
@@ -113,7 +117,8 @@ impl OpenWAClient {
       .send()
       .await?;
 
-    let session: OpenWASession =
+    let session:
+      OpenWASession =
       Self::check(response)
         .await?
         .json()
@@ -140,7 +145,8 @@ impl OpenWAClient {
       .send()
       .await?;
 
-    let session: OpenWASession =
+    let session:
+      OpenWASession =
       Self::check(response)
         .await?
         .json()
@@ -167,7 +173,8 @@ impl OpenWAClient {
       .send()
       .await?;
 
-    let session: OpenWASession =
+    let session:
+      OpenWASession =
       Self::check(response)
         .await?
         .json()
@@ -202,7 +209,8 @@ impl OpenWAClient {
         .send()
         .await?;
 
-      let page: Vec<OpenWASession> =
+      let page:
+        Vec<OpenWASession> =
         Self::check(response)
           .await?
           .json()
@@ -211,7 +219,8 @@ impl OpenWAClient {
       let page_len = page.len();
 
       sessions.extend(
-        page.into_iter()
+        page
+          .into_iter()
           .map(Session::from),
       );
 
@@ -223,6 +232,35 @@ impl OpenWAClient {
     }
 
     Ok(sessions)
+  }
+
+  /// DELETE /api/sessions/:id
+  ///
+  /// Delete the OpenWA session.
+  ///
+  /// The endpoint returns 204 No Content on success,
+  /// so there is no response body to deserialize.
+  pub async fn delete_session(
+    &self,
+    session_id: &str,
+  ) -> Result<(), WppError> {
+    let builder = self
+      .http
+      .delete(self.url(
+        &format!(
+          "/sessions/{session_id}"
+        ),
+      ));
+
+    let response = self
+      .request(builder)
+      .send()
+      .await?;
+
+    Self::check(response)
+      .await?;
+
+    Ok(())
   }
 
   /// POST /api/sessions/:id/logout
@@ -245,7 +283,8 @@ impl OpenWAClient {
       .send()
       .await?;
 
-    let session: OpenWASession =
+    let session:
+      OpenWASession =
       Self::check(response)
         .await?
         .json()
@@ -272,7 +311,8 @@ impl OpenWAClient {
       .send()
       .await?;
 
-    let qr: OpenWAQrCodeResponse =
+    let qr:
+      OpenWAQrCodeResponse =
       Self::check(response)
         .await?
         .json()
@@ -287,10 +327,11 @@ impl OpenWAClient {
     session_id: &str,
     phone: &str,
   ) -> Result<PairingCodeResponse, WppError> {
-    let clean_phone: String = phone
-      .chars()
-      .filter(|c| c.is_ascii_digit())
-      .collect();
+    let clean_phone: String =
+      phone
+        .chars()
+        .filter(|c| c.is_ascii_digit())
+        .collect();
 
     let builder = self
       .http
@@ -342,7 +383,8 @@ impl OpenWAClient {
       .send()
       .await?;
 
-    let chats: Vec<ChatSummary> =
+    let chats:
+      Vec<ChatSummary> =
       Self::check(response)
         .await?
         .json()
@@ -366,7 +408,8 @@ impl OpenWAClient {
     limit: usize,
     after: Option<&str>,
   ) -> Result<MessagePage, WppError> {
-    let limit = limit.clamp(1, 100);
+    let limit =
+      limit.clamp(1, 100);
 
     let mut params = vec![
       (
@@ -411,32 +454,34 @@ impl OpenWAClient {
         .json()
         .await?;
 
-    let messages = response
-      .messages
-      .into_iter()
-      .map(|message| Message {
-        id: message.id,
-        chat_id: message.chat_id,
-        from: message.from,
-        to: message.to,
-        body: message.body,
-        kind: message.kind,
-        direction:
-          if message
-            .direction
-            .eq_ignore_ascii_case(
-              "outgoing",
-            )
-          {
-            MessageDirection::Outgoing
-          } else {
-            MessageDirection::Incoming
-          },
-        author: message.author,
-        timestamp: message.timestamp,
-        status: message.status,
-      })
-      .collect();
+    let messages =
+      response
+        .messages
+        .into_iter()
+        .map(|message| Message {
+          id: message.id,
+          chat_id: message.chat_id,
+          from: message.from,
+          to: message.to,
+          body: message.body,
+          kind: message.kind,
+          direction:
+            if message
+              .direction
+              .eq_ignore_ascii_case(
+                "outgoing",
+              )
+            {
+              MessageDirection::Outgoing
+            } else {
+              MessageDirection::Incoming
+            },
+          author: message.author,
+          timestamp:
+            message.timestamp,
+          status: message.status,
+        })
+        .collect();
 
     Ok(MessagePage {
       messages,
@@ -445,7 +490,9 @@ impl OpenWAClient {
   }
 }
 
-impl From<OpenWASession> for Session {
+impl From<OpenWASession>
+  for Session
+{
   fn from(
     session: OpenWASession,
   ) -> Self {
@@ -454,7 +501,8 @@ impl From<OpenWASession> for Session {
       name: session.name,
       status: session.status,
       phone: session.phone,
-      push_name: session.push_name,
+      push_name:
+        session.push_name,
       engine_loaded:
         session.engine_loaded,
     }
@@ -465,11 +513,14 @@ impl From<OpenWAQrCodeResponse>
   for QrCodeResponse
 {
   fn from(
-    response: OpenWAQrCodeResponse,
+    response:
+      OpenWAQrCodeResponse,
   ) -> Self {
     Self {
-      qr_code: response.qr_code,
-      status: response.status,
+      qr_code:
+        response.qr_code,
+      status:
+        response.status,
     }
   }
 }
@@ -478,15 +529,19 @@ impl From<OpenWAPairingCodeResponse>
   for PairingCodeResponse
 {
   fn from(
-    response: OpenWAPairingCodeResponse,
+    response:
+      OpenWAPairingCodeResponse,
   ) -> Self {
     Self {
-      code: response.pairing_code,
+      code:
+        response.pairing_code,
     }
   }
 }
 
-impl From<ChatSummary> for Chat {
+impl From<ChatSummary>
+  for Chat
+{
   fn from(
     chat: ChatSummary,
   ) -> Self {

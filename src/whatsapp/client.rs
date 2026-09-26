@@ -87,6 +87,19 @@ impl WhatsAppClient {
     }
   }
 
+  pub async fn delete_session(
+    &self,
+    session_id: &str,
+  ) -> Result<(), WppError> {
+    match &self.backend {
+      Backend::OpenWA(client) => {
+        client
+          .delete_session(session_id)
+          .await
+      }
+    }
+  }
+
   pub async fn logout(
     &self,
     session_id: &str,
