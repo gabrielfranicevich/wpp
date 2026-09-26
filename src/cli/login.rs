@@ -1,9 +1,15 @@
 use anyhow::Result;
 use crossterm::style::Stylize;
 use std::io::Write;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{
+  SystemTime,
+  UNIX_EPOCH,
+};
 
-use crate::app::config::{Config, SessionEntry};
+use crate::app::config::{
+  Config,
+  SessionEntry,
+};
 use crate::terminal::render::render_qr;
 use crate::whatsapp::client::WhatsAppClient;
 
@@ -21,13 +27,14 @@ pub async fn run(
   // an alias. When omitted, an alias is generated after the
   // WhatsApp session becomes authenticated.
   if let Some(ref alias) = alias {
-    if config.sessions.contains_key(alias) {
+    if config.alias_exists(alias) {
       eprintln!(
         "{}",
         format!(
-          "Session '{alias}' already exists. Use `wpp switch {alias}` \
-           to activate it,\n\
-           or choose a different alias with `wpp login --alias <name>`."
+          "Session alias '{alias}' already exists. Use \
+           `wpp switch {alias}` to activate it, \
+           or choose a different alias with \
+           `wpp login --alias <name>`."
         )
         .yellow()
       );
@@ -36,97 +43,116 @@ pub async fn run(
     }
   }
 
-  let api_key = config.openwa_api_key();
+  let api_key =
+    config.openwa_api_key();
 
-  let client = WhatsAppClient::openwa(
-    &config.base_url,
-    api_key.clone(),
-  );
+  let client =
+    WhatsAppClient::openwa(
+      &config.base_url,
+      api_key.clone(),
+    );
 
   // ── 1. Create session in OpenWA ────────────────────────────
 
   eprintln!(
     "{}",
-    " Creating session...".dark_grey()
+    " Creating session..."
+      .dark_grey()
   );
 
   // The OpenWA session name is independent from the user-facing
   // wpp alias. This lets `wpp login` work without --alias.
-  let session_name = generate_session_name();
+  let session_name =
+    generate_session_name();
 
-  let session = match client.create_session(&session_name).await {
-    Ok(s) => s,
+  let session =
+    match client
+      .create_session(&session_name)
+      .await
+    {
+      Ok(s) => s,
 
-    Err(e) => {
-      match &e {
-        crate::error::WppError::Api {
-          status: 401,
-          ..
-        } => {
-          eprintln!(
-            "{} OpenWA authentication failed (401)",
-            "✗".red().bold()
-          );
+      Err(e) => {
+        match &e {
+          crate::error::WppError::Api {
+            status: 401,
+            ..
+          } => {
+            eprintln!(
+              "{} OpenWA authentication failed (401)",
+              "✗".red().bold()
+            );
 
-          eprintln!(
-            " {}",
-            "Set WPP_OPENWA_API_KEY or OPENWA_API_KEY \
-             (or place .api-key in openwa/data/)."
-              .dark_grey()
-          );
+            eprintln!(
+              " {}",
+              "Set WPP_OPENWA_API_KEY or OPENWA_API_KEY \
+               (or place .api-key in openwa/data/)."
+                .dark_grey()
+            );
+          }
+
+          _ => {
+            eprintln!(
+              "{} Could not connect to OpenWA at {}",
+              "✗".red().bold(),
+              config.base_url
+            );
+
+            eprintln!(
+              " {}",
+              "Make sure OpenWA is running \
+               (e.g. `cd openwa && npm run dev`)"
+                .dark_grey()
+            );
+          }
         }
 
-        _ => {
-          eprintln!(
-            "{} Could not connect to OpenWA at {}",
-            "✗".red().bold(),
-            config.base_url
-          );
-
-          eprintln!(
-            " {}",
-            "Make sure OpenWA is running \
-             (e.g. `cd openwa && npm run dev`)"
-              .dark_grey()
-          );
-        }
+        return Err(e.into());
       }
+    };
 
-      return Err(e.into());
-    }
-  };
-
-  let id = session.id.clone();
+  let id =
+    session.id.clone();
 
   // ── 2. Start the session engine ────────────────────────────
 
   eprintln!(
     "{}",
-    " Starting engine...".dark_grey()
+    " Starting engine..."
+      .dark_grey()
   );
 
-  client.start_session(&id).await?;
+  client
+    .start_session(&id)
+    .await?;
 
   // Give the engine a moment to initialise and generate a QR.
   tokio::time::sleep(
     std::time::Duration::from_secs(3)
-  ).await;
+  )
+  .await;
 
   // ── 3. Show QR or pairing code ─────────────────────────────
 
-  if let Some(ref phone_number) = phone {
+  if let Some(
+    ref phone_number
+  ) = phone {
     // Pairing-code flow.
 
     eprintln!(
       "{}",
-      " Requesting pairing code...".dark_grey()
+      " Requesting pairing code..."
+        .dark_grey()
     );
 
     let mut pairing = None;
 
     for _ in 0..15 {
       match client
-        .request_pairing_code(&id, phone_number)
+        .request_pairing_code(
+          &id,
+          phone_number,
+        )
         .await
       {
         Ok(p) => {
@@ -137,17 +163,19 @@ pub async fn run(
         Err(_) => {
           tokio::time::sleep(
             std::time::Duration::from_secs(2)
-          ).await;
+          )
+          .await;
         }
       }
     }
 
-    let pairing = pairing.ok_or_else(|| {
-      anyhow::anyhow!(
-        "Could not get pairing code after 30 s. \
-         Is OpenWA running with ENGINE_TYPE=baileys?"
-      )
-    })?;
+    let pairing =
+      pairing.ok_or_else(|| {
+        anyhow::anyhow!(
+          "Could not get pairing code after 30 s. \
+           Is OpenWA running with ENGINE_TYPE=baileys?"
+        )
+      })?;
 
     println!();
 
@@ -160,9 +188,11 @@ pub async fn run(
 
     println!(
       "  {}",
-      format_pairing_code(&pairing.code)
-        .green()
-        .bold()
+      format_pairing_code(
+        &pairing.code
+      )
+      .green()
+      .bold()
     );
 
     println!();
@@ -171,32 +201,39 @@ pub async fn run(
 
     eprintln!(
       "{}",
-      " Waiting for QR code...".dark_grey()
+      " Waiting for QR code..."
+        .dark_grey()
     );
 
     let mut qr_data = None;
 
     for _ in 0..15 {
-      match client.get_qr(&id).await {
+      match client
+        .get_qr(&id)
+        .await
+      {
         Ok(qr) => {
-          qr_data = Some(qr.qr_code);
+          qr_data =
+            Some(qr.qr_code);
           break;
         }
 
         Err(_) => {
           tokio::time::sleep(
             std::time::Duration::from_secs(2)
-          ).await;
+          )
+          .await;
         }
       }
     }
 
-    let qr_data = qr_data.ok_or_else(|| {
-      anyhow::anyhow!(
-        "Could not get QR code after 30 s. \
-         Is OpenWA running with ENGINE_TYPE=baileys?"
-      )
-    })?;
+    let qr_data =
+      qr_data.ok_or_else(|| {
+        anyhow::anyhow!(
+          "Could not get QR code after 30 s. \
+           Is OpenWA running with ENGINE_TYPE=baileys?"
+        )
+      })?;
 
     // OpenWA gives us an image. render_qr() decodes that image,
     // extracts the actual QR payload, and generates a fresh
@@ -216,7 +253,8 @@ pub async fn run(
 
   eprint!(
     "{}",
-    " Waiting for authentication".dark_grey()
+    " Waiting for authentication"
+      .dark_grey()
   );
 
   let mut authenticated = false;
@@ -226,9 +264,12 @@ pub async fn run(
 
     tokio::time::sleep(
       std::time::Duration::from_secs(2)
-    ).await;
+    )
+    .await;
 
-    if let Ok(s) = client.get_session(&id).await {
+    if let Ok(s) =
+      client.get_session(&id).await
+    {
       match s.status.as_str() {
         "ready" => {
           eprintln!();
@@ -245,35 +286,50 @@ pub async fn run(
             who.bold()
           );
 
-          if let Some(ref ph) = s.phone {
-            println!("  Phone: {ph}");
+          if let Some(ref ph) =
+            s.phone
+          {
+            println!(
+              "  Phone: {ph}"
+            );
           }
 
           // Generate the user-facing alias only after authentication,
           // because the phone number is available at this point.
-          let final_alias = match alias {
-            Some(alias) => alias,
-            None => {
-              config.next_session_alias(
-                s.phone.as_deref()
-              )
-            }
-          };
+          let final_alias =
+            match alias {
+              Some(alias) => alias,
+
+              None => {
+                config
+                  .next_session_alias(
+                    s.phone.as_deref()
+                  )
+              }
+            };
 
           // Persist the authenticated session.
-          config.sessions.insert(
-            final_alias.clone(),
+          //
+          // The OpenWA session ID is the session identity;
+          // the wpp alias is metadata attached to it.
+          config.upsert_session(
             SessionEntry {
               id: id.clone(),
-              phone: s.phone.clone(),
-              push_name: s.push_name.clone(),
+              aliases: Vec::new(),
+              phone:
+                s.phone.clone(),
+              push_name:
+                s.push_name.clone(),
             },
-          );
+            final_alias.clone(),
+          )?;
 
-          config.active_session = Some(final_alias);
+          config.active_session =
+            Some(final_alias);
 
           if config.api_key.is_none() {
-            config.api_key = api_key;
+            config.api_key =
+              api_key;
           }
 
           config.save()?;
@@ -295,7 +351,8 @@ pub async fn run(
 
         _ => {
           eprint!(".");
-          std::io::stderr().flush()?;
+          std::io::stderr()
+            .flush()?;
         }
       }
     }
@@ -321,19 +378,28 @@ pub async fn run(
 /// OpenWA requires a valid unique session name even when the
 /// user doesn't provide `--alias`.
 fn generate_session_name() -> String {
-  let millis = SystemTime::now()
-    .duration_since(UNIX_EPOCH)
-    .unwrap_or_default()
-    .as_millis();
+  let millis =
+    SystemTime::now()
+      .duration_since(
+        UNIX_EPOCH
+      )
+      .unwrap_or_default()
+      .as_millis();
 
   format!("wpp-{millis}")
 }
 
 /// Format pairing code with a dash in the middle:
 /// "ABCD-EFGH"
-fn format_pairing_code(code: &str) -> String {
+fn format_pairing_code(
+  code: &str,
+) -> String {
   if code.len() == 8 {
-    format!("{}-{}", &code[..4], &code[4..])
+    format!(
+      "{}-{}",
+      &code[..4],
+      &code[4..]
+    )
   } else {
     code.to_string()
   }
