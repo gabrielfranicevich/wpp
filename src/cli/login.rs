@@ -12,20 +12,22 @@ use crate::app::config::{
 };
 use crate::terminal::render::render_qr;
 use crate::whatsapp::client::WhatsAppClient;
+use crate::whatsapp::models::Session;
 
 /// `wpp login [PHONE] [--phone NUMBER] [--qr] [--alias NAME]`
 ///
-/// Creates a new session in OpenWA, shows QR or pairing code,
+/// Creates or reuses an OpenWA session, shows QR or pairing code,
 /// waits for authentication, and saves the session to config.
 pub async fn run(
   phone: Option<String>,
   alias: Option<String>,
 ) -> Result<()> {
-  let mut config = Config::load()?;
+  let mut config =
+    Config::load()?;
 
   // Only reject duplicates when the user explicitly provided
-  // an alias. When omitted, an alias is generated after the
-  // WhatsApp session becomes authenticated.
+  // an alias. When omitted, an existing same-phone session
+  // can be reused.
   if let Some(ref alias) = alias {
     if config.alias_exists(alias) {
       eprintln!(
@@ -52,69 +54,116 @@ pub async fn run(
       api_key.clone(),
     );
 
-  // ── 1. Create session in OpenWA ────────────────────────────
+  // ── 1. Reuse an existing session when the phone is known ───
 
-  eprintln!(
-    "{}",
-    " Creating session..."
-      .dark_grey()
-  );
+  let existing_session =
+    match phone.as_deref() {
+      Some(phone_number) =>
+        find_reusable_session(
+          &mut config,
+          &client,
+          phone_number,
+        )
+        .await?,
 
-  // The OpenWA session name is independent from the user-facing
-  // wpp alias. This lets `wpp login` work without --alias.
-  let session_name =
-    generate_session_name();
-
-  let session =
-    match client
-      .create_session(&session_name)
-      .await
-    {
-      Ok(s) => s,
-
-      Err(e) => {
-        match &e {
-          crate::error::WppError::Api {
-            status: 401,
-            ..
-          } => {
-            eprintln!(
-              "{} OpenWA authentication failed (401)",
-              "✗".red().bold()
-            );
-
-            eprintln!(
-              " {}",
-              "Set WPP_OPENWA_API_KEY or OPENWA_API_KEY \
-               (or place .api-key in openwa/data/)."
-                .dark_grey()
-            );
-          }
-
-          _ => {
-            eprintln!(
-              "{} Could not connect to OpenWA at {}",
-              "✗".red().bold(),
-              config.base_url
-            );
-
-            eprintln!(
-              " {}",
-              "Make sure OpenWA is running \
-               (e.g. `cd openwa && npm run dev`)"
-                .dark_grey()
-            );
-          }
-        }
-
-        return Err(e.into());
-      }
+      None => None,
     };
 
   let id =
-    session.id.clone();
+    match existing_session.as_ref() {
+      Some(session) => {
+        eprintln!(
+          "{}",
+          format!(
+            " Reusing existing session '{}'...",
+            session.name
+          )
+          .cyan()
+        );
 
-  // ── 2. Start the session engine ────────────────────────────
+        session.id.clone()
+      }
+
+      None => {
+        // ── 2. Create session in OpenWA ──────────────────────
+
+        eprintln!(
+          "{}",
+          " Creating session..."
+            .dark_grey()
+        );
+
+        // The OpenWA session name is independent from the
+        // user-facing wpp alias.
+        let session_name =
+          generate_session_name();
+
+        let session =
+          match client
+            .create_session(&session_name)
+            .await
+          {
+            Ok(s) => s,
+
+            Err(e) => {
+              match &e {
+                crate::error::WppError::Api {
+                  status: 401,
+                  ..
+                } => {
+                  eprintln!(
+                    "{} OpenWA authentication failed (401)",
+                    "✗".red().bold()
+                  );
+
+                  eprintln!(
+                    " {}",
+                    "Set WPP_OPENWA_API_KEY or OPENWA_API_KEY \
+                     (or place .api-key in openwa/data/)."
+                      .dark_grey()
+                  );
+                }
+
+                _ => {
+                  eprintln!(
+                    "{} Could not connect to OpenWA at {}",
+                    "✗".red().bold(),
+                    config.base_url
+                  );
+
+                  eprintln!(
+                    " {}",
+                    "Make sure OpenWA is running \
+                     (e.g. `cd openwa && npm run dev`)"
+                      .dark_grey()
+                  );
+                }
+              }
+
+              return Err(e.into());
+            }
+          };
+
+        session.id.clone()
+      }
+    };
+
+  // ── 3. Reused session is already authenticated ─────────────
+
+  if let Some(session) =
+    existing_session.as_ref()
+  {
+    if session.status == "ready" {
+      return activate_ready_session(
+        &mut config,
+        &session,
+        alias,
+        api_key,
+      );
+    }
+  }
+
+  // ── 4. Start the session engine ────────────────────────────
 
   eprintln!(
     "{}",
@@ -132,7 +181,7 @@ pub async fn run(
   )
   .await;
 
-  // ── 3. Show QR or pairing code ─────────────────────────────
+  // ── 5. Show QR or pairing code ─────────────────────────────
 
   if let Some(
     ref phone_number
@@ -249,7 +298,7 @@ pub async fn run(
     println!();
   }
 
-  // ── 4. Poll until authenticated ────────────────────────────
+  // ── 6. Poll until authenticated ────────────────────────────
 
   eprint!(
     "{}",
@@ -294,24 +343,27 @@ pub async fn run(
             );
           }
 
-          // Generate the user-facing alias only after authentication,
-          // because the phone number is available at this point.
+          // When reusing an existing local session without
+          // an explicit alias, keep one of its existing aliases.
+          //
+          // New sessions still get a generated phone-based alias.
           let final_alias =
             match alias {
               Some(alias) => alias,
 
               None => {
-                config
-                  .next_session_alias(
+                existing_alias(
+                  &config,
+                  &id,
+                )
+                .unwrap_or_else(|| {
+                  config.next_session_alias(
                     s.phone.as_deref()
                   )
+                })
               }
             };
 
-          // Persist the authenticated session.
-          //
-          // The OpenWA session ID is the session identity;
-          // the wpp alias is metadata attached to it.
           config.upsert_session(
             SessionEntry {
               id: id.clone(),
@@ -370,6 +422,242 @@ pub async fn run(
   }
 
   Ok(())
+}
+
+/// Search for a reusable session for a known phone.
+///
+/// Local config is checked first. If the local session is stale,
+/// it is removed and OpenWA is queried directly.
+///
+/// When OpenWA contains exactly one matching session, that session
+/// can also be adopted by wpp even if it was not previously known
+/// locally.
+async fn find_reusable_session(
+  config: &mut Config,
+  client: &WhatsAppClient,
+  phone: &str,
+) -> Result<Option<Session>> {
+  if let Some((_, entry)) =
+    config.find_session_by_phone(phone)
+  {
+    let session_id =
+      entry.id.clone();
+
+    match client
+      .get_session(&session_id)
+      .await
+    {
+      Ok(session) => {
+        return Ok(Some(session));
+      }
+
+      Err(
+        crate::error::WppError::Api {
+          status: 404,
+          ..
+        }
+      ) => {
+        // The local reference is stale.
+        if config
+          .remove_session_by_id(
+            &session_id
+          )
+          .is_some()
+        {
+          config.save()?;
+        }
+      }
+
+      Err(error) => {
+        return Err(error.into());
+      }
+    }
+  }
+
+  // The phone may belong to an OpenWA session that wpp does not
+  // know about yet. Reuse it instead of creating a duplicate.
+  let sessions =
+    client.list_sessions().await?;
+
+  let normalized_phone =
+    normalize_phone(phone);
+
+  if normalized_phone.is_empty() {
+    return Ok(None);
+  }
+
+  let matches: Vec<&Session> =
+    sessions
+      .iter()
+      .filter(|session| {
+        session
+          .phone
+          .as_deref()
+          .map(normalize_phone)
+          .is_some_and(|session_phone| {
+            session_phone
+              == normalized_phone
+          })
+      })
+      .collect();
+
+  match matches.len() {
+    0 => Ok(None),
+
+    1 => {
+      Ok(Some(matches[0].clone()))
+    }
+
+    _ => {
+      let descriptions =
+        matches
+          .iter()
+          .map(|session| {
+            format!(
+              "{} ({})",
+              session.name,
+              session.id
+            )
+          })
+          .collect::<Vec<_>>()
+          .join(", ");
+
+      anyhow::bail!(
+        "Multiple OpenWA sessions match phone '{}': {}",
+        phone,
+        descriptions
+      );
+    }
+  }
+}
+
+/// Persist and activate a session that is already authenticated.
+///
+/// A reused session keeps an existing alias when no alias was given.
+/// A new alias is added to the same OpenWA session.
+fn activate_ready_session(
+  config: &mut Config,
+  session: &Session,
+  alias: Option<String>,
+  api_key: Option<String>,
+) -> Result<()> {
+  let existing_alias =
+    existing_alias(
+      config,
+      &session.id,
+    );
+
+  let already_active =
+    existing_alias.as_deref()
+      .is_some_and(|existing| {
+        config.active_session
+          .as_deref()
+          == Some(existing)
+      });
+
+  // Same phone + same active session + no new alias:
+  // there is nothing else to do.
+  if alias.is_none()
+    && already_active
+  {
+    let who = session
+      .push_name
+      .as_deref()
+      .or(session.phone.as_deref())
+      .unwrap_or("WhatsApp");
+
+    println!(
+      " {} Session already active as {}",
+      "✓".green().bold(),
+      who.bold()
+    );
+
+    return Ok(());
+  }
+
+  let final_alias =
+    match alias {
+      Some(alias) => alias,
+
+      None =>
+        existing_alias.unwrap_or_else(|| {
+          config.next_session_alias(
+            session.phone.as_deref()
+          )
+        }),
+    };
+
+  config.upsert_session(
+    SessionEntry {
+      id: session.id.clone(),
+      aliases: Vec::new(),
+      phone:
+        session.phone.clone(),
+      push_name:
+        session.push_name.clone(),
+    },
+    final_alias.clone(),
+  )?;
+
+  config.active_session =
+    Some(final_alias.clone());
+
+  if config.api_key.is_none() {
+    config.api_key =
+      api_key;
+  }
+
+  config.save()?;
+
+  let who = session
+    .push_name
+    .as_deref()
+    .or(session.phone.as_deref())
+    .unwrap_or("WhatsApp");
+
+  println!(
+    " {} Reused session for {}",
+    "✓".green().bold(),
+    who.bold()
+  );
+
+  if let Some(ref phone) =
+    session.phone
+  {
+    println!(
+      "  Phone: {phone}"
+    );
+  }
+
+  println!(
+    "  Alias: {final_alias}"
+  );
+
+  Ok(())
+}
+
+/// Return one existing alias for an OpenWA session, if wpp
+/// already knows that session.
+fn existing_alias(
+  config: &Config,
+  session_id: &str,
+) -> Option<String> {
+  config
+    .sessions
+    .get(session_id)
+    .and_then(|entry| {
+      entry.aliases.first().cloned()
+    })
+}
+
+/// Normalize a phone number for exact comparison.
+fn normalize_phone(
+  value: &str,
+) -> String {
+  value
+    .chars()
+    .filter(|c| c.is_ascii_digit())
+    .collect()
 }
 
 /// Generate an internal OpenWA session name.

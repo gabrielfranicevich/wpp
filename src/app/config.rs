@@ -368,6 +368,50 @@ impl Config {
       })
   }
 
+  /// Find a session by an exact normalized phone number.
+  ///
+  /// Formatting characters such as `+`, spaces and `-` are ignored.
+  ///
+  /// This is intentionally stricter than `find_session`, which also
+  /// supports partial phone queries for interactive commands.
+  pub fn find_session_by_phone(
+    &self,
+    phone: &str,
+  ) -> Option<(
+    &str,
+    &SessionEntry,
+  )> {
+    let normalized =
+      normalize_phone(phone);
+
+    if normalized.is_empty() {
+      return None;
+    }
+
+    self
+      .sessions
+      .values()
+      .find_map(|entry| {
+        let entry_phone =
+          entry.phone.as_deref()?;
+
+        if normalize_phone(entry_phone)
+          == normalized
+        {
+          entry.aliases.first().map(
+            |alias| {
+              (
+                alias.as_str(),
+                entry,
+              )
+            },
+          )
+        } else {
+          None
+        }
+      })
+  }
+
   fn find_by_alias<'a>(
     &'a self,
     query: &str,
@@ -463,10 +507,27 @@ impl Config {
     let session_id =
       session.id.clone();
 
+    let session_phone =
+      session.phone.clone();
+
+    let session_push_name =
+      session.push_name.clone();
+
     let entry = self
       .sessions
       .entry(session_id)
       .or_insert(session);
+
+    // Reusing a session can refresh its metadata.
+    if session_phone.is_some() {
+      entry.phone =
+        session_phone;
+    }
+
+    if session_push_name.is_some() {
+      entry.push_name =
+        session_push_name;
+    }
 
     if !entry.aliases.contains(&alias) {
       entry.aliases.push(alias);
@@ -602,6 +663,19 @@ impl Config {
       })
       .collect()
   }
+}
+
+/// Normalize a phone number for exact comparison.
+///
+/// WhatsApp/OpenWA may expose the number with different formatting,
+/// so only ASCII digits are kept.
+fn normalize_phone(
+  value: &str,
+) -> String {
+  value
+    .chars()
+    .filter(|c| c.is_ascii_digit())
+    .collect()
 }
 
 #[cfg(test)]
@@ -761,6 +835,72 @@ mod tests {
     assert_eq!(
       entry.id,
       "session-id"
+    );
+  }
+
+  #[test]
+  fn find_session_by_phone_normalizes_formatting() {
+    let mut config =
+      Config::default();
+
+    let mut entry =
+      session(
+        "session-id",
+        &["personal"],
+      );
+
+    entry.phone =
+      Some("+54 9 351-123-4567".to_string());
+
+    config.sessions.insert(
+      "session-id".to_string(),
+      entry,
+    );
+
+    let result =
+      config.find_session_by_phone(
+        "5493511234567"
+      );
+
+    assert!(result.is_some());
+
+    let (alias, entry) =
+      result.unwrap();
+
+    assert_eq!(
+      alias,
+      "personal"
+    );
+
+    assert_eq!(
+      entry.id,
+      "session-id"
+    );
+  }
+
+  #[test]
+  fn find_session_by_phone_does_not_match_partial_numbers() {
+    let mut config =
+      Config::default();
+
+    let mut entry =
+      session(
+        "session-id",
+        &["personal"],
+      );
+
+    entry.phone =
+      Some("5493511234567".to_string());
+
+    config.sessions.insert(
+      "session-id".to_string(),
+      entry,
+    );
+
+    assert!(
+      config
+        .find_session_by_phone("351")
+        .is_none()
     );
   }
 
@@ -926,6 +1066,53 @@ mod tests {
         "personal".to_string(),
         "phone".to_string(),
       ]
+    );
+  }
+
+  #[test]
+  fn upsert_session_updates_metadata() {
+    let mut config =
+      Config::default();
+
+    config.sessions.insert(
+      "session-id".to_string(),
+      session(
+        "session-id",
+        &["personal"],
+      ),
+    );
+
+    let mut updated =
+      session(
+        "session-id",
+        &[],
+      );
+
+    updated.phone =
+      Some("5493511234567".to_string());
+
+    updated.push_name =
+      Some("Gabriel".to_string());
+
+    let result =
+      config.upsert_session(
+        updated,
+        "personal".to_string(),
+      );
+
+    assert!(result.is_ok());
+
+    let entry =
+      &config.sessions["session-id"];
+
+    assert_eq!(
+      entry.phone.as_deref(),
+      Some("5493511234567")
+    );
+
+    assert_eq!(
+      entry.push_name.as_deref(),
+      Some("Gabriel")
     );
   }
 }
