@@ -18,6 +18,9 @@ use crate::whatsapp::models::Session;
 ///
 /// Creates or reuses an OpenWA session, shows QR or pairing code,
 /// waits for authentication, and saves the session to config.
+///
+/// After QR authentication, duplicate OpenWA sessions belonging
+/// to the same WhatsApp phone are reconciled automatically.
 pub async fn run(
   phone: Option<String>,
   alias: Option<String>,
@@ -343,48 +346,14 @@ pub async fn run(
             );
           }
 
-          // When reusing an existing local session without
-          // an explicit alias, keep one of its existing aliases.
-          //
-          // New sessions still get a generated phone-based alias.
-          let final_alias =
-            match alias {
-              Some(alias) => alias,
-
-              None => {
-                existing_alias(
-                  &config,
-                  &id,
-                )
-                .unwrap_or_else(|| {
-                  config.next_session_alias(
-                    s.phone.as_deref()
-                  )
-                })
-              }
-            };
-
-          config.upsert_session(
-            SessionEntry {
-              id: id.clone(),
-              aliases: Vec::new(),
-              phone:
-                s.phone.clone(),
-              push_name:
-                s.push_name.clone(),
-            },
-            final_alias.clone(),
-          )?;
-
-          config.active_session =
-            Some(final_alias);
-
-          if config.api_key.is_none() {
-            config.api_key =
-              api_key;
-          }
-
-          config.save()?;
+          reconcile_authenticated_session(
+            &mut config,
+            &client,
+            &s,
+            alias,
+            api_key,
+          )
+          .await?;
 
           authenticated = true;
           break;
@@ -420,6 +389,516 @@ pub async fn run(
         .yellow()
     );
   }
+
+  Ok(())
+}
+
+/// Reconcile the newly authenticated session against another
+/// OpenWA session using the same WhatsApp phone.
+///
+/// The newly authenticated session is never persisted locally
+/// before reconciliation, so aliases can be transferred cleanly.
+async fn reconcile_authenticated_session(
+  config: &mut Config,
+  client: &WhatsAppClient,
+  authenticated: &Session,
+  requested_alias: Option<String>,
+  api_key: Option<String>,
+) -> Result<()> {
+  let Some(phone) =
+    authenticated.phone.as_deref()
+  else {
+    return persist_authenticated_session(
+      config,
+      authenticated,
+      requested_alias,
+      api_key,
+      false,
+    );
+  };
+
+  let normalized_phone =
+    normalize_phone(phone);
+
+  if normalized_phone.is_empty() {
+    return persist_authenticated_session(
+      config,
+      authenticated,
+      requested_alias,
+      api_key,
+      false,
+    );
+  }
+
+  let sessions =
+    client.list_sessions().await?;
+
+  let duplicates: Vec<Session> =
+    sessions
+      .into_iter()
+      .filter(|session| {
+        session.id != authenticated.id
+          && session
+            .phone
+            .as_deref()
+            .map(normalize_phone)
+            .is_some_and(|session_phone| {
+              session_phone
+                == normalized_phone
+            })
+      })
+      .collect();
+
+  if duplicates.is_empty() {
+    return persist_authenticated_session(
+      config,
+      authenticated,
+      requested_alias,
+      api_key,
+      false,
+    );
+  }
+
+  if duplicates.len() > 1 {
+    let descriptions =
+      duplicates
+        .iter()
+        .map(|session| {
+          format!(
+            "{} ({}, {})",
+            session.name,
+            session.id,
+            session.status
+          )
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    anyhow::bail!(
+      "Multiple OpenWA sessions already use phone '{}': {}. \
+       Run `wpp session` to inspect them before retrying.",
+      phone,
+      descriptions
+    );
+  }
+
+  let duplicate =
+    duplicates
+      .into_iter()
+      .next()
+      .expect(
+        "duplicate list checked above",
+      );
+
+  let authenticated_aliases =
+    aliases_for_session(
+      config,
+      &authenticated.id,
+    );
+
+  let duplicate_aliases =
+    aliases_for_session(
+      config,
+      &duplicate.id,
+    );
+
+  if duplicate.status == "ready" {
+    /*
+     * Existing session is active.
+     *
+     * Keep it, transfer any aliases from the newly authenticated
+     * session, add the explicitly requested alias, delete the new
+     * duplicate and activate the existing session.
+     */
+
+    eprintln!(
+      "{}",
+      format!(
+        " Duplicate phone detected. Keeping active session '{}'...",
+        duplicate.name
+      )
+      .yellow()
+    );
+
+    delete_remote_session(
+      client,
+      authenticated,
+    )
+    .await?;
+
+    // The new session may already have a local reference when the
+    // pairing flow reused an inactive session.
+    config.remove_session_by_id(
+      &authenticated.id,
+    );
+
+    let primary_alias =
+      requested_alias
+        .clone()
+        .or_else(|| {
+          duplicate_aliases
+            .first()
+            .cloned()
+        })
+        .or_else(|| {
+          authenticated_aliases
+            .first()
+            .cloned()
+        })
+        .unwrap_or_else(|| {
+          config.next_session_alias(
+            duplicate.phone.as_deref()
+          )
+        });
+
+    config.upsert_session(
+      SessionEntry {
+        id: duplicate.id.clone(),
+        aliases: Vec::new(),
+        phone:
+          duplicate.phone.clone(),
+        push_name:
+          duplicate.push_name.clone(),
+      },
+      primary_alias.clone(),
+    )?;
+
+    for alias in duplicate_aliases
+      .into_iter()
+      .chain(
+        authenticated_aliases
+          .into_iter()
+      )
+      .chain(
+        requested_alias.into_iter()
+      )
+    {
+      add_alias_if_needed(
+        config,
+        &duplicate.id,
+        alias,
+      )?;
+    }
+
+    config.active_session =
+      Some(primary_alias.clone());
+
+    if config.api_key.is_none() {
+      config.api_key =
+        api_key;
+    }
+
+    config.save()?;
+
+    println!(
+      " {} Kept session {}",
+      "✓".green().bold(),
+      duplicate.name.bold()
+    );
+
+    println!(
+      "  Alias: {}",
+      primary_alias
+    );
+
+    println!(
+      " {} Removed duplicate session {}",
+      "✓".green().bold(),
+      authenticated.id
+    );
+
+    return Ok(());
+  }
+
+  /*
+   * Existing session is inactive.
+   *
+   * Keep the newly authenticated session, transfer all aliases
+   * from the old session, add the explicitly requested alias,
+   * delete the inactive duplicate and activate the new session.
+   */
+
+  eprintln!(
+    "{}",
+    format!(
+      " Duplicate phone detected. Replacing inactive session '{}'...",
+      duplicate.name
+    )
+    .yellow()
+  );
+
+  delete_remote_session(
+    client,
+    &duplicate,
+  )
+  .await?;
+
+  config.remove_session_by_id(
+    &duplicate.id,
+  );
+
+  let primary_alias =
+    requested_alias
+      .clone()
+      .or_else(|| {
+        authenticated_aliases
+          .first()
+          .cloned()
+      })
+      .or_else(|| {
+        duplicate_aliases
+          .first()
+          .cloned()
+      })
+      .unwrap_or_else(|| {
+        config.next_session_alias(
+          authenticated.phone.as_deref()
+        )
+      });
+
+  config.upsert_session(
+    SessionEntry {
+      id: authenticated.id.clone(),
+      aliases: Vec::new(),
+      phone:
+        authenticated.phone.clone(),
+      push_name:
+        authenticated.push_name.clone(),
+    },
+    primary_alias.clone(),
+  )?;
+
+  for alias in authenticated_aliases
+    .into_iter()
+    .chain(
+      duplicate_aliases.into_iter()
+    )
+    .chain(
+      requested_alias.into_iter()
+    )
+  {
+    add_alias_if_needed(
+      config,
+      &authenticated.id,
+      alias,
+    )?;
+  }
+
+  config.active_session =
+    Some(primary_alias.clone());
+
+  if config.api_key.is_none() {
+    config.api_key =
+      api_key;
+  }
+
+  config.save()?;
+
+  println!(
+    " {} Replaced inactive session {}",
+    "✓".green().bold(),
+    duplicate.name
+  );
+
+  println!(
+    "  New session: {}",
+    authenticated.id
+  );
+
+  println!(
+    "  Alias: {}",
+    primary_alias
+  );
+
+  println!(
+    " {} Removed duplicate session {}",
+    "✓".green().bold(),
+    duplicate.id
+  );
+
+  Ok(())
+}
+
+/// Persist a normal authenticated session when no duplicate was found.
+///
+/// When `reused` is true, an already-known alias is preferred.
+/// Otherwise a new phone-based alias is generated when necessary.
+fn persist_authenticated_session(
+  config: &mut Config,
+  session: &Session,
+  requested_alias: Option<String>,
+  api_key: Option<String>,
+  reused: bool,
+) -> Result<()> {
+  let existing_alias =
+    existing_alias(
+      config,
+      &session.id,
+    );
+
+  let final_alias =
+    match requested_alias {
+      Some(alias) => alias,
+
+      None => {
+        if reused {
+          existing_alias
+            .unwrap_or_else(|| {
+              config.next_session_alias(
+                session.phone.as_deref()
+              )
+            })
+        } else {
+          config.next_session_alias(
+            session.phone.as_deref()
+          )
+        }
+      }
+    };
+
+  config.upsert_session(
+    SessionEntry {
+      id: session.id.clone(),
+      aliases: Vec::new(),
+      phone:
+        session.phone.clone(),
+      push_name:
+        session.push_name.clone(),
+    },
+    final_alias.clone(),
+  )?;
+
+  config.active_session =
+    Some(final_alias.clone());
+
+  if config.api_key.is_none() {
+    config.api_key =
+      api_key;
+  }
+
+  config.save()?;
+
+  if reused {
+    println!(
+      " {} Reused session for {}",
+      "✓".green().bold(),
+      session
+        .push_name
+        .as_deref()
+        .or(session.phone.as_deref())
+        .unwrap_or("WhatsApp")
+        .bold()
+    );
+  }
+
+  println!(
+    "  Alias: {final_alias}"
+  );
+
+  Ok(())
+}
+
+/// Persist and activate a session that is already authenticated.
+///
+/// A reused session keeps an existing alias when no alias was given.
+/// A new alias is added to the same OpenWA session.
+fn activate_ready_session(
+  config: &mut Config,
+  session: &Session,
+  alias: Option<String>,
+  api_key: Option<String>,
+) -> Result<()> {
+  let existing_alias =
+    existing_alias(
+      config,
+      &session.id,
+    );
+
+  let already_active =
+    existing_alias.as_deref()
+      .is_some_and(|existing| {
+        config.active_session
+          .as_deref()
+          == Some(existing)
+      });
+
+  // Same phone + same active session + no new alias:
+  // there is nothing else to do.
+  if alias.is_none()
+    && already_active
+  {
+    let who = session
+      .push_name
+      .as_deref()
+      .or(session.phone.as_deref())
+      .unwrap_or("WhatsApp");
+
+    println!(
+      " {} Session already active as {}",
+      "✓".green().bold(),
+      who.bold()
+    );
+
+    return Ok(());
+  }
+
+  let final_alias =
+    match alias {
+      Some(alias) => alias,
+
+      None =>
+        existing_alias.unwrap_or_else(|| {
+          config.next_session_alias(
+            session.phone.as_deref()
+          )
+        }),
+    };
+
+  config.upsert_session(
+    SessionEntry {
+      id: session.id.clone(),
+      aliases: Vec::new(),
+      phone:
+        session.phone.clone(),
+      push_name:
+        session.push_name.clone(),
+    },
+    final_alias.clone(),
+  )?;
+
+  config.active_session =
+    Some(final_alias.clone());
+
+  if config.api_key.is_none() {
+    config.api_key =
+      api_key;
+  }
+
+  config.save()?;
+
+  let who = session
+    .push_name
+    .as_deref()
+    .or(session.phone.as_deref())
+    .unwrap_or("WhatsApp");
+
+  println!(
+    " {} Reused session for {}",
+    "✓".green().bold(),
+    who.bold()
+  );
+
+  if let Some(ref phone) =
+    session.phone
+  {
+    println!(
+      "  Phone: {phone}"
+    );
+  }
+
+  println!(
+    "  Alias: {final_alias}"
+  );
 
   Ok(())
 }
@@ -531,107 +1010,87 @@ async fn find_reusable_session(
   }
 }
 
-/// Persist and activate a session that is already authenticated.
+/// Delete an OpenWA session.
 ///
-/// A reused session keeps an existing alias when no alias was given.
-/// A new alias is added to the same OpenWA session.
-fn activate_ready_session(
-  config: &mut Config,
+/// Logout is best-effort because inactive sessions may reject it.
+/// The DELETE operation remains the authoritative cleanup step.
+async fn delete_remote_session(
+  client: &WhatsAppClient,
   session: &Session,
-  alias: Option<String>,
-  api_key: Option<String>,
 ) -> Result<()> {
-  let existing_alias =
-    existing_alias(
-      config,
-      &session.id,
-    );
+  eprintln!(
+    "{}",
+    format!(
+      " Deleting duplicate session '{}'...",
+      session.name
+    )
+    .dark_grey()
+  );
 
-  let already_active =
-    existing_alias.as_deref()
-      .is_some_and(|existing| {
-        config.active_session
-          .as_deref()
-          == Some(existing)
-      });
-
-  // Same phone + same active session + no new alias:
-  // there is nothing else to do.
-  if alias.is_none()
-    && already_active
+  match client
+    .logout(&session.id)
+    .await
   {
-    let who = session
-      .push_name
-      .as_deref()
-      .or(session.phone.as_deref())
-      .unwrap_or("WhatsApp");
+    Ok(_) => {}
 
-    println!(
-      " {} Session already active as {}",
-      "✓".green().bold(),
-      who.bold()
-    );
-
-    return Ok(());
+    Err(error) => {
+      eprintln!(
+        " {} Logout skipped for duplicate: {}",
+        "!".yellow().bold(),
+        error
+      );
+    }
   }
 
-  let final_alias =
-    match alias {
-      Some(alias) => alias,
+  client
+    .delete_session(&session.id)
+    .await?;
 
-      None =>
-        existing_alias.unwrap_or_else(|| {
-          config.next_session_alias(
-            session.phone.as_deref()
-          )
-        }),
-    };
+  Ok(())
+}
 
-  config.upsert_session(
-    SessionEntry {
-      id: session.id.clone(),
-      aliases: Vec::new(),
-      phone:
-        session.phone.clone(),
-      push_name:
-        session.push_name.clone(),
-    },
-    final_alias.clone(),
+/// Return all aliases currently associated with an OpenWA session.
+fn aliases_for_session(
+  config: &Config,
+  session_id: &str,
+) -> Vec<String> {
+  config
+    .sessions
+    .get(session_id)
+    .map(|entry| {
+      entry.aliases.clone()
+    })
+    .unwrap_or_default()
+}
+
+/// Add an alias only when it is not already associated with
+/// the target session.
+///
+/// If the alias belongs to another session, fail rather than
+/// silently reassigning it.
+fn add_alias_if_needed(
+  config: &mut Config,
+  session_id: &str,
+  alias: String,
+) -> Result<()> {
+  if let Some((_, entry)) =
+    config.find_session(&alias)
+  {
+    if entry.id == session_id {
+      return Ok(());
+    }
+
+    anyhow::bail!(
+      "Session alias '{}' already belongs to OpenWA session '{}'.",
+      alias,
+      entry.id
+    );
+  }
+
+  config.add_alias(
+    session_id,
+    alias,
   )?;
-
-  config.active_session =
-    Some(final_alias.clone());
-
-  if config.api_key.is_none() {
-    config.api_key =
-      api_key;
-  }
-
-  config.save()?;
-
-  let who = session
-    .push_name
-    .as_deref()
-    .or(session.phone.as_deref())
-    .unwrap_or("WhatsApp");
-
-  println!(
-    " {} Reused session for {}",
-    "✓".green().bold(),
-    who.bold()
-  );
-
-  if let Some(ref phone) =
-    session.phone
-  {
-    println!(
-      "  Phone: {phone}"
-    );
-  }
-
-  println!(
-    "  Alias: {final_alias}"
-  );
 
   Ok(())
 }
