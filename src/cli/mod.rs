@@ -1,9 +1,9 @@
 use clap::{Parser, Subcommand, ValueEnum};
 
-pub mod chats;
+pub mod chat;
+pub mod list;
 pub mod login;
 pub mod logout;
-pub mod open;
 pub mod session;
 pub mod switch;
 
@@ -68,7 +68,7 @@ pub enum Command {
   },
 
   /// List chats (most recent first)
-  Chats {
+  List {
     /// Maximum number of chats to inspect
     #[arg(long, conflicts_with = "all")]
     limit: Option<usize>,
@@ -87,7 +87,7 @@ pub enum Command {
   },
 
   /// Open a chat history
-  Open {
+  Chat {
     /// Contact name or phone number
     who: String,
 

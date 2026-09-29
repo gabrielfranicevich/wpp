@@ -45,13 +45,13 @@ async fn main() -> anyhow::Result<()> {
       cli::session::run(delete).await?;
     }
 
-    cli::Command::Chats {
+    cli::Command::List {
       limit,
       all,
       unread,
       filter,
     } => {
-      cli::chats::run(
+      cli::list::run(
         limit,
         all,
         unread,
@@ -60,11 +60,11 @@ async fn main() -> anyhow::Result<()> {
       .await?;
     }
 
-    cli::Command::Open {
+    cli::Command::Chat {
       who,
       unread,
     } => {
-      cli::open::run(who, unread).await?;
+      cli::chat::run(who, unread).await?;
     }
 
     cli::Command::Send { .. }
