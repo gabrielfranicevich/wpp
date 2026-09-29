@@ -6,21 +6,21 @@ use crate::app::state::AppContext;
 use crate::terminal::pager::run as run_pager;
 
 pub async fn run(who: String, unread: bool) -> Result<()> {
-  if unread {
-    anyhow::bail!("`wpp chat --unread` is not implemented yet");
-  }
+    if unread {
+        anyhow::bail!("`wpp chat --unread` is not implemented yet");
+    }
 
-  let context = AppContext::load()?;
+    let context = AppContext::load()?;
 
-  let session_id = context.session.entry.id.clone();
+    let session_id = context.session.entry.id.clone();
 
-  let chats = ChatsService::new(&context.whatsapp, &session_id);
+    let chats = ChatsService::new(&context.whatsapp, &session_id);
 
-  let chat = chats.resolve(&who).await?;
+    let chat = chats.resolve(&who).await?;
 
-  let mut pager = MessagePager::new(&context.whatsapp, &session_id, &chat.id).await?;
+    let mut pager = MessagePager::new(&context.whatsapp, &session_id, &chat.id).await?;
 
-  run_pager(&chat, &mut pager).await?;
+    run_pager(&chat, &mut pager).await?;
 
-  Ok(())
+    Ok(())
 }

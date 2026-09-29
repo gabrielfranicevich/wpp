@@ -11,102 +11,72 @@ use crate::whatsapp::client::WhatsAppClient;
 ///
 /// All aliases associated with that OpenWA session are removed because
 /// logout operates on the session itself, not on an individual alias.
-pub async fn run(
-  target: Option<String>,
-) -> Result<()> {
-  let mut config =
-    Config::load()?;
+pub async fn run(target: Option<String>) -> Result<()> {
+    let mut config = Config::load()?;
 
-  let session_id =
-    match target {
-      Some(query) => {
-        let Some((_, entry)) =
-          config.find_session(&query)
-        else {
-          eprintln!(
-            " {} No session matching '{}'",
-            "✗".red().bold(),
-            query
-          );
+    let session_id = match target {
+        Some(query) => {
+            let Some((_, entry)) = config.find_session(&query) else {
+                eprintln!(" {} No session matching '{}'", "✗".red().bold(), query);
 
-          eprintln!(
-            " Run `wpp switch` to see available sessions."
-          );
+                eprintln!(" Run `wpp switch` to see available sessions.");
 
-          return Ok(());
-        };
+                return Ok(());
+            };
 
-        entry.id.clone()
-      }
+            entry.id.clone()
+        }
 
-      None => {
-        let Some((_, entry)) =
-          config.active_entry()
-        else {
-          anyhow::bail!(
-            "No active session. Run `wpp switch` to select one \
+        None => {
+            let Some((_, entry)) = config.active_entry() else {
+                anyhow::bail!(
+                    "No active session. Run `wpp switch` to select one \
              or `wpp login` to create one."
-          );
-        };
+                );
+            };
 
-        entry.id.clone()
-      }
+            entry.id.clone()
+        }
     };
 
-  let client =
-    WhatsAppClient::openwa(
-      &config.base_url,
-      config.openwa_api_key(),
+    let client = WhatsAppClient::openwa(&config.base_url, config.openwa_api_key());
+
+    eprintln!(
+        "{}",
+        format!(" Logging out session '{session_id}'...").dark_grey()
     );
 
-  eprintln!(
-    "{}",
-    format!(
-      " Logging out session '{session_id}'..."
-    )
-    .dark_grey()
-  );
+    client.logout(&session_id).await?;
 
-  client
-    .logout(&session_id)
-    .await?;
+    let removed = config.remove_session_by_id(&session_id);
 
-  let removed =
-    config.remove_session_by_id(
-      &session_id
-    );
+    config.save()?;
 
-  config.save()?;
-
-  println!(
-    " {} Logged out session {}",
-    "✓".green().bold(),
-    session_id.bold()
-  );
-
-  if let Some(entry) =
-    removed
-  {
-    if entry.aliases.len() == 1 {
-      println!(
-        " {} Removed local alias: {}",
-        "✓".green().bold(),
-        entry.aliases[0]
-      );
-    } else if !entry.aliases.is_empty() {
-      println!(
-        " {} Removed local aliases: {}",
-        "✓".green().bold(),
-        entry.aliases.join(", ")
-      );
-    }
-  }
-
-  if config.active_session.is_none() {
     println!(
-      " Run `wpp switch <alias>` to select another session."
+        " {} Logged out session {}",
+        "✓".green().bold(),
+        session_id.bold()
     );
-  }
 
-  Ok(())
+    if let Some(entry) = removed {
+        if entry.aliases.len() == 1 {
+            println!(
+                " {} Removed local alias: {}",
+                "✓".green().bold(),
+                entry.aliases[0]
+            );
+        } else if !entry.aliases.is_empty() {
+            println!(
+                " {} Removed local aliases: {}",
+                "✓".green().bold(),
+                entry.aliases.join(", ")
+            );
+        }
+    }
+
+    if config.active_session.is_none() {
+        println!(" Run `wpp switch <alias>` to select another session.");
+    }
+
+    Ok(())
 }
