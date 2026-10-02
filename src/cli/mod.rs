@@ -9,6 +9,7 @@ pub mod search;
 pub mod send;
 pub mod session;
 pub mod switch;
+pub mod sync;
 
 #[derive(Parser)]
 #[command(name = "wpp", about = "WhatsApp from the terminal", version)]
@@ -153,7 +154,7 @@ pub enum Command {
   /// Listen for incoming messages in real time
   Listen,
 
-  /// Sync messages to local cache
+  /// Synchronize messages into the local SQLite cache
   Sync {
     /// Max messages per chat
     #[arg(long)]

@@ -4,7 +4,6 @@ use crate::app::services::chat_resolver::ChatResolver;
 use crate::app::services::chats::ChatsService;
 use crate::app::services::messages::MessagePager;
 use crate::app::state::AppContext;
-use crate::terminal::pager::run as run_pager;
 use crate::terminal::pager::run_with_listener;
 use crate::whatsapp::models::Chat;
 

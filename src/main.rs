@@ -3,6 +3,7 @@ use clap::Parser;
 mod app;
 mod cli;
 mod error;
+mod storage;
 mod terminal;
 mod whatsapp;
 
@@ -96,8 +97,8 @@ async fn main() -> anyhow::Result<()> {
       cli::listen::run().await?;
     }
 
-    cli::Command::Sync { .. } => {
-      eprintln!("Not yet implemented — coming in the next sprint.");
+    cli::Command::Sync { limit, who } => {
+      cli::sync::run(limit, who).await?;
     }
   }
 

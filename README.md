@@ -394,7 +394,8 @@ wpp sync --who "Gabriel,+549..."  # only sync specific contacts
 
 - The pager loads a recent window of messages on open
 - Scrolling up past the top triggers lazy loading of older messages
-- The first visible message stays at the same screen position after loading older messages
+- The first visible message stays at the same screen position after loading
+  older messages
 - `Home` loads the full available history
 
 ### Message composer
