@@ -6,6 +6,22 @@ const PAGE_SIZE: usize = 50;
 const MAX_DEEP_HISTORY: usize = 2000;
 const UNREAD_LOOKBACK_EXTRA: usize = 50;
 
+/// Send a plain text message to a chat.
+pub async fn send_text(
+  whatsapp: &WhatsAppClient,
+  session_id: &str,
+  chat_id: &str,
+  text: &str,
+) -> Result<(), WppError> {
+  if text.trim().is_empty() {
+    return Err(WppError::Other(
+      "message cannot be empty".to_string(),
+    ));
+  }
+
+  whatsapp.send_text(session_id, chat_id, text).await
+}
+
 /// Lazy reader for live WhatsApp chat history.
 ///
 /// OpenWA's live history endpoint returns messages oldest -> newest
@@ -29,6 +45,7 @@ pub struct MessagePager<'a> {
   messages: Vec<Message>,
   loaded_limit: usize,
   exhausted: bool,
+  unread_only: bool,
 }
 
 impl<'a> MessagePager<'a> {
@@ -52,6 +69,7 @@ impl<'a> MessagePager<'a> {
       messages,
       loaded_limit,
       exhausted,
+      unread_only: false,
     })
   }
 
@@ -78,6 +96,7 @@ impl<'a> MessagePager<'a> {
         messages: Vec::new(),
         loaded_limit: 0,
         exhausted: true,
+        unread_only: true,
       });
     }
 
@@ -100,7 +119,40 @@ impl<'a> MessagePager<'a> {
       messages,
       loaded_limit,
       exhausted: true,
+      unread_only: true,
     })
+  }
+
+  /// Send a message from the currently open chat.
+  ///
+  /// The message is added optimistically to the normal history view after
+  /// OpenWA confirms the request. Unread-only views deliberately do not add
+  /// the outgoing message because it is not part of the unread history.
+  pub async fn send_text(&mut self, text: &str) -> Result<(), WppError> {
+    send_text(
+      self.whatsapp,
+      self.session_id,
+      self.chat_id,
+      text,
+    )
+    .await?;
+
+    if !self.unread_only {
+      self.messages.push(Message {
+        id: format!("local-{}", self.messages.len()),
+        chat_id: self.chat_id.to_string(),
+        from: String::new(),
+        to: self.chat_id.to_string(),
+        body: Some(text.to_string()),
+        kind: "text".to_string(),
+        direction: MessageDirection::Outgoing,
+        author: None,
+        timestamp: None,
+        status: "sent".to_string(),
+      });
+    }
+
+    Ok(())
   }
 
   /// Load one additional window of older messages.

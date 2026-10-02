@@ -59,8 +59,11 @@ async fn main() -> anyhow::Result<()> {
       cli::search::run(query).await?;
     }
 
-    cli::Command::Send { .. }
-    | cli::Command::Listen
+    cli::Command::Send { who, message } => {
+      cli::send::run(who, message).await?;
+    }
+
+    cli::Command::Listen
     | cli::Command::Sync { .. } => {
       eprintln!("Not yet implemented — coming in the next sprint.");
     }

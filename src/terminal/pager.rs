@@ -31,8 +31,11 @@ async fn run_loop(
   chat: &Chat,
   pager: &mut MessagePager<'_>,
 ) -> anyhow::Result<()> {
+  let mut composer: Option<Composer> = None;
+
   // Draw once when entering the pager.
-  let (mut scroll_top, mut max_scroll, mut body_height) = draw(stdout, chat, pager, usize::MAX)?;
+  let (mut scroll_top, mut max_scroll, mut body_height) =
+    draw(stdout, chat, pager, usize::MAX, None)?;
 
   loop {
     if !event::poll(Duration::from_millis(250))? {
@@ -43,6 +46,7 @@ async fn run_loop(
     let event = event::read()?;
 
     let mut redraw = false;
+    let mut scroll_to_bottom = false;
 
     match event {
       Event::Resize(_, _) => {
@@ -50,6 +54,99 @@ async fn run_loop(
       }
 
       Event::Key(key) => {
+        if let Some(current_composer) = composer.as_mut() {
+          match key.code {
+            KeyCode::Esc => {
+              composer = None;
+              redraw = true;
+            }
+
+            KeyCode::Char('c')
+              if key.modifiers.contains(KeyModifiers::CONTROL) =>
+            {
+              composer = None;
+              redraw = true;
+            }
+
+            KeyCode::Enter => {
+              let text = current_composer.text();
+
+              if !text.trim().is_empty() {
+                let was_at_bottom = scroll_top == max_scroll;
+
+                pager.send_text(&text).await?;
+
+                composer = None;
+
+                redraw = true;
+                scroll_to_bottom = was_at_bottom;
+              }
+            }
+
+            KeyCode::Backspace => {
+              current_composer.backspace();
+              redraw = true;
+            }
+
+            KeyCode::Delete => {
+              current_composer.delete();
+              redraw = true;
+            }
+
+            KeyCode::Left => {
+              current_composer.move_left();
+              redraw = true;
+            }
+
+            KeyCode::Right => {
+              current_composer.move_right();
+              redraw = true;
+            }
+
+            KeyCode::Home => {
+              current_composer.move_home();
+              redraw = true;
+            }
+
+            KeyCode::End => {
+              current_composer.move_end();
+              redraw = true;
+            }
+
+            KeyCode::Char(character)
+              if !key.modifiers.contains(KeyModifiers::CONTROL)
+                && !key.modifiers.contains(KeyModifiers::ALT) =>
+            {
+              current_composer.insert(character);
+              redraw = true;
+            }
+
+            _ => {}
+          }
+
+          if redraw {
+            let requested_scroll = if scroll_to_bottom {
+              usize::MAX
+            } else {
+              scroll_top
+            };
+
+            let result = draw(
+              stdout,
+              chat,
+              pager,
+              requested_scroll,
+              composer.as_ref(),
+            )?;
+
+            scroll_top = result.0;
+            max_scroll = result.1;
+            body_height = result.2;
+          }
+
+          continue;
+        }
+
         match key.code {
           KeyCode::Esc | KeyCode::Char('q') => {
             break;
@@ -57,6 +154,15 @@ async fn run_loop(
 
           KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             break;
+          }
+
+          // Ctrl+Space enters message composition mode.
+          KeyCode::Char(' ')
+            if key.modifiers.contains(KeyModifiers::CONTROL) =>
+          {
+            composer = Some(Composer::default());
+
+            redraw = true;
           }
 
           KeyCode::Up | KeyCode::Char('k') => {
@@ -147,7 +253,19 @@ async fn run_loop(
     }
 
     if redraw {
-      let result = draw(stdout, chat, pager, scroll_top)?;
+      let requested_scroll = if scroll_to_bottom {
+        usize::MAX
+      } else {
+        scroll_top
+      };
+
+      let result = draw(
+        stdout,
+        chat,
+        pager,
+        requested_scroll,
+        composer.as_ref(),
+      )?;
 
       scroll_top = result.0;
       max_scroll = result.1;
@@ -163,6 +281,7 @@ fn draw(
   chat: &Chat,
   pager: &MessagePager<'_>,
   requested_scroll: usize,
+  composer: Option<&Composer>,
 ) -> anyhow::Result<(usize, usize, usize)> {
   let (terminal_width, terminal_height) = terminal::size()?;
 
@@ -171,8 +290,13 @@ fn draw(
   let height = terminal_height as usize;
 
   // Header: 2 lines.
-  // Footer: 2 lines.
-  let body_height = height.saturating_sub(4);
+  //
+  // Normal footer: 2 lines.
+  //
+  // Composer adds one extra line.
+  let reserved_lines = if composer.is_some() { 5 } else { 4 };
+
+  let body_height = height.saturating_sub(reserved_lines);
 
   let content = render_messages(chat, pager.messages(), width);
 
@@ -209,7 +333,15 @@ fn draw(
 
   write!(stdout, "{separator}\r\n")?;
 
-  let footer = " ↑↓ / j/k  PgUp/PgDn  Home/End  q/Esc ";
+  if let Some(composer) = composer {
+    draw_composer(stdout, composer, width)?;
+  }
+
+  let footer = if composer.is_some() {
+    " Enter: send   Esc: cancel   ←→ / Home/End   Backspace/Delete "
+  } else {
+    " ↑↓ / j/k  PgUp/PgDn  Home/End  Ctrl+Space: message  q/Esc "
+  };
 
   write!(stdout, "{}", truncate_line(footer, width,),)?;
 
@@ -231,10 +363,116 @@ enum Alignment {
   Right,
 }
 
+#[derive(Debug, Default)]
+struct Composer {
+  chars: Vec<char>,
+  cursor: usize,
+}
+
+impl Composer {
+  fn text(&self) -> String {
+    self.chars.iter().collect()
+  }
+
+  fn insert(&mut self, character: char) {
+    self.chars.insert(self.cursor, character);
+    self.cursor += 1;
+  }
+
+  fn backspace(&mut self) {
+    if self.cursor == 0 {
+      return;
+    }
+
+    self.cursor -= 1;
+    self.chars.remove(self.cursor);
+  }
+
+  fn delete(&mut self) {
+    if self.cursor >= self.chars.len() {
+      return;
+    }
+
+    self.chars.remove(self.cursor);
+  }
+
+  fn move_left(&mut self) {
+    self.cursor = self.cursor.saturating_sub(1);
+  }
+
+  fn move_right(&mut self) {
+    self.cursor = self.cursor.saturating_add(1).min(self.chars.len());
+  }
+
+  fn move_home(&mut self) {
+    self.cursor = 0;
+  }
+
+  fn move_end(&mut self) {
+    self.cursor = self.chars.len();
+  }
+}
+
+fn draw_composer(
+  stdout: &mut io::Stdout,
+  composer: &Composer,
+  terminal_width: usize,
+) -> anyhow::Result<()> {
+  if terminal_width == 0 {
+    return Ok(());
+  }
+
+  let prefix = "> ";
+
+  let available = terminal_width
+    .saturating_sub(prefix.chars().count())
+    .saturating_sub(1);
+
+  let cursor = composer.cursor;
+
+  let start = if cursor > available {
+    cursor - available
+  } else {
+    0
+  };
+
+  let end = (start + available).min(composer.chars.len());
+
+  let visible = composer.chars[start..end].iter().collect::<String>();
+
+  let cursor_offset = cursor.saturating_sub(start);
+
+  let mut line = String::with_capacity(prefix.len() + visible.len() + 1);
+
+  line.push_str(prefix);
+
+  for (index, character) in visible.chars().enumerate() {
+    if index == cursor_offset {
+      line.push('▌');
+    }
+
+    line.push(character);
+  }
+
+  if cursor_offset == visible.chars().count() {
+    line.push('▌');
+  }
+
+  write!(stdout, "{line}")?;
+
+  let padding = terminal_width.saturating_sub(line.chars().count());
+
+  write!(stdout, "{}", " ".repeat(padding),)?;
+  write!(stdout, "\r\n")?;
+
+  Ok(())
+}
+
 fn render_messages(chat: &Chat, messages: &[Message], terminal_width: usize) -> Vec<RenderedLine> {
   let mut lines = Vec::new();
 
-  let max_bubble_width = ((terminal_width * BUBBLE_MAX_WIDTH_RATIO) / 100).max(BUBBLE_MIN_WIDTH);
+  let max_bubble_width =
+    ((terminal_width * BUBBLE_MAX_WIDTH_RATIO) / 100).max(BUBBLE_MIN_WIDTH);
 
   let mut index = 0;
 
@@ -306,15 +544,15 @@ fn render_group(
    * Bubble layout:
    *
    *  ╭─ Martina ─────────╮
-   *  │• Hola       │
-   *  │ Segunda línea  │
-   *  │• Otro mensaje   │
+   *  │• Hola             │
+   *  │  Segunda línea    │
+   *  │• Otro mensaje     │
    *  ╰───────────────────╯
    *
    * The body width accounts for:
    *
    *  2 columns -> border characters
-   *  2 columns -> "• " / " "
+   *  2 columns -> "• " / "  "
    */
   let body_width = max_bubble_width
     .saturating_sub(2)
@@ -390,7 +628,7 @@ fn render_group(
   // a continuation of that same message.
   for message in messages_lines {
     for (line_index, line) in message.into_iter().enumerate() {
-      let prefix = if line_index == 0 { "• " } else { " " };
+      let prefix = if line_index == 0 { "• " } else { "  " };
 
       let text_width = line.chars().count();
 
@@ -673,5 +911,55 @@ impl Drop for TerminalGuard {
     let _ = execute!(self.stdout, cursor::Show, LeaveAlternateScreen,);
 
     let _ = terminal::disable_raw_mode();
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::Composer;
+
+  #[test]
+  fn composer_inserts_and_moves_cursor() {
+    let mut composer = Composer::default();
+
+    composer.insert('a');
+    composer.insert('b');
+    composer.move_left();
+    composer.insert('x');
+
+    assert_eq!(composer.text(), "axb");
+  }
+
+  #[test]
+  fn composer_backspace_deletes_before_cursor() {
+    let mut composer = Composer::default();
+
+    composer.insert('a');
+    composer.insert('b');
+    composer.backspace();
+
+    assert_eq!(composer.text(), "a");
+  }
+
+  #[test]
+  fn composer_delete_deletes_after_cursor() {
+    let mut composer = Composer::default();
+
+    composer.insert('a');
+    composer.insert('b');
+    composer.move_left();
+    composer.delete();
+
+    assert_eq!(composer.text(), "a");
+  }
+
+  #[test]
+  fn composer_supports_unicode() {
+    let mut composer = Composer::default();
+
+    composer.insert('á');
+    composer.insert('🙂');
+
+    assert_eq!(composer.text(), "á🙂");
   }
 }

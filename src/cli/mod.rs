@@ -5,6 +5,7 @@ pub mod list;
 pub mod login;
 pub mod logout;
 pub mod search;
+pub mod send;
 pub mod session;
 pub mod switch;
 

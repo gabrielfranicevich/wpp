@@ -217,6 +217,30 @@ impl OpenWAClient {
     Ok(chats.into_iter().map(Chat::from).collect())
   }
 
+  /// POST /api/sessions/:id/messages/send-text
+  ///
+  /// Send a plain text message to a chat.
+  pub async fn send_text(
+    &self,
+    session_id: &str,
+    chat_id: &str,
+    text: &str,
+  ) -> Result<(), WppError> {
+    let builder = self
+      .http
+      .post(self.url(&format!("/sessions/{session_id}/messages/send-text")))
+      .json(&serde_json::json!({
+        "chatId": chat_id,
+        "text": text,
+      }));
+
+    let response = self.request(builder).send().await?;
+
+    Self::check(response).await?;
+
+    Ok(())
+  }
+
   /// GET /api/sessions/:id/messages
   ///
   /// Read messages persisted by OpenWA.
