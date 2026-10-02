@@ -61,15 +61,7 @@ async fn run_loop(
               redraw = true;
             }
 
-            KeyCode::Char('c')
-              if key.modifiers.contains(KeyModifiers::CONTROL) =>
-            {
-              composer = None;
-              redraw = true;
-            }
-
-            // Shift+Tab inserts a newline instead of sending.
-            KeyCode::BackTab => {
+            KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) => {
               current_composer.insert('\n');
               redraw = true;
             }

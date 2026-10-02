@@ -2,7 +2,11 @@
 
 > WhatsApp from the terminal — written in Rust.
 
-`wpp` is a lightweight terminal client for WhatsApp. No GUI, no browser, no Electron. It talks to WhatsApp through an [OpenWA](https://openwa.js.org/) server (powered by Baileys) over REST, and is designed so that the OpenWA transport layer can eventually be replaced by a native Rust implementation.
+`wpp` is a lightweight terminal client for WhatsApp.
+No GUI, no browser, no Electron.
+It talks to WhatsApp through an [OpenWA](https://openwa.js.org/) server
+(powered by Baileys) over REST, and is designed so that the OpenWA transport
+layer can eventually be replaced by a native Rust implementation.
 
 ---
 
@@ -26,7 +30,7 @@ wpp send Gabriel Hey!
 
 ## Architecture
 
-```
+```text
 ┌─────────────────────┐
 │       WhatsApp      │
 └──────────┬──────────┘
@@ -47,15 +51,17 @@ wpp send Gabriel Hey!
 └─────────────────────┘
 ```
 
-`wpp` and `openwa` are two separate processes. OpenWA must be running before any `wpp` command is issued.
+`wpp` and `openwa` are two separate processes.
+OpenWA must be running before any `wpp` command is issued.
 
 The internal layer stack is:
 
-```
+```text
 CLI  →  Application services  →  WhatsApp abstraction  →  OpenWA  →  WhatsApp
 ```
 
-The CLI has no knowledge of OpenWA-specific HTTP details — those live exclusively in the `whatsapp/openwa` layer.
+The CLI has no knowledge of OpenWA-specific HTTP details —
+those live exclusively in the `whatsapp/openwa` layer.
 
 ---
 
@@ -109,7 +115,8 @@ active_session = "personal"
 
 ### `wpp login`
 
-Authenticate with WhatsApp. Sessions are saved locally and can be reused across runs.
+Authenticate with WhatsApp.
+Sessions are saved locally and can be reused across runs.
 
 ```bash
 wpp login                                  # QR code (default)
@@ -119,14 +126,16 @@ wpp login +5491100000000 --alias personal  # phone pairing + alias
 ```
 
 - If the phone number already has a saved session, it is reused automatically.
-- After QR authentication, duplicate sessions for the same phone are reconciled automatically.
+- After QR authentication,
+  duplicate sessions for the same phone are reconciled automatically.
 - Multiple aliases can be associated with a single session.
 
 ---
 
 ### `wpp logout [TARGET]`
 
-Log out a WhatsApp session through OpenWA and remove the local session entry. All aliases associated with the session are removed.
+Log out a WhatsApp session through OpenWA and remove the local session entry.
+All aliases associated with the session are removed.
 
 ```bash
 wpp logout           # log out the active session
@@ -137,7 +146,8 @@ wpp logout personal  # log out a session by alias or phone number
 
 ### `wpp switch [TARGET]`
 
-Manage the active session. The last used session is automatically restored on the next run.
+Manage the active session.
+The last used session is automatically restored on the next run.
 
 ```bash
 wpp switch           # list all saved sessions (with active indicator)
@@ -149,14 +159,16 @@ wpp switch +549...   # activate a session by phone number
 
 ### `wpp session`
 
-Low-level OpenWA session management. Shows OpenWA session status and which ones are tracked locally by `wpp`.
+Low-level OpenWA session management.
+Shows OpenWA session status and which ones are tracked locally by `wpp`.
 
 ```bash
 wpp session          # list all OpenWA sessions (name, phone, ID, status, wpp aliases)
 wpp session -D <id>  # logout + delete a session; also accepts alias or phone number
 ```
 
-If the target refers to a local alias whose OpenWA session no longer exists, the stale local reference is removed.
+If the target refers to a local alias whose OpenWA session no longer exists,
+the stale local reference is removed.
 
 ---
 
@@ -185,7 +197,8 @@ Interactive chat selector inside `wpp list` is also planned.
 
 ### `wpp chat <CONTACT/GROUP>`
 
-Open an interactive terminal pager for a conversation. Accepts name, phone number, or raw WhatsApp chat ID.
+Open an interactive terminal pager for a conversation. Accepts name,
+phone number, or raw WhatsApp chat ID.
 
 ```bash
 wpp chat Gabriel
@@ -200,29 +213,36 @@ Resolution supports exact identifiers and case-insensitive name matching.
 
 **Planned:**
 
+compatible options should be stackable
+
 ```bash
-wpp chat --block <contact>      # blocks a contact
-wpp chat --unblock <contact>    # unblocks a contact
-wpp chat --archive <contact>    # archives the chat
-wpp chat --unarchive <contact>  # unarchives the chat
-wpp chat --pin <contact>        # pins the chat
-wpp chat --unpin <contact>      # unpins the chat
-wpp chat --mute <contact>       # mutes the chat
-wpp chat --unmute <contact>     # unmutes the chat
-wpp chat --call <contact>       # calls a contact (audio call)
-wpp chat --video-call <contact> # calls a contact (video call)
-wpp chat --mark-read <contact>  # marks the chat as read
-wpp chat --mark-unread <contact>  # marks the chat as unread
+wpp chat <contact> --block      # blocks a contact
+wpp chat <contact> --unblock    # unblocks a contact
+wpp chat <contact> --archive    # archives the chat
+wpp chat <contact> --unarchive  # unarchives the chat
+wpp chat <contact> --pin        # pins the chat
+wpp chat <contact> --unpin      # unpins the chat
+wpp chat <contact> --mute       # mutes the chat
+wpp chat <contact> --unmute     # unmutes the chat
+wpp chat <contact> --call       # calls a contact (audio call)
+wpp chat <contact> --video-call # calls a contact (video call)
+wpp chat <contact> --mark-read  # marks the chat as read
+wpp chat <contact> --mark-unread  # marks the chat as unread
 ```
 
 In the `wpp chat <contact>` tui:
-  the options to select messages, look for a message, reply a specific message, call, video call, send audio, erase a message, send multimedia, polls, location, documents, stickers, contacts
+  chat should update real time
+  the options to select messages, look for a message, reply a specific message,
+  call, video call, send audio, erase a message, send multimedia, polls,
+  location, documents, stickers, contacts
 
 ---
 
 ### `wpp search <QUERY>`
 
-Search chats by name or phone number without opening them. Matching is case-insensitive for names and digit-normalized for phone numbers (partial matches supported).
+Search chats by name or phone number without opening them.
+Matching is case-insensitive for names and digit-normalized for phone numbers
+(partial matches supported).
 
 ```bash
 wpp search gabriel
@@ -247,13 +267,20 @@ wpp send Gabriel this works with multiple words too
 **Planned:**
 
 ```bash
-wpp send <CONTACT> --file <path> ## --caption <caption> is optional (photos or videos are sent as "document")
-wpp send <CONTACT> --video <path> ## --caption <caption>, --HD, --GIF are optional
-wpp send <CONTACT> --photo <path> ## --caption <caption>, --HD are optional
-wpp send <CONTACT> --sticker <path> ## --animated (true|false) is optional, default is false
-wpp send <CONTACT> --location <latitude> <longitude> ## --name <name> and --address <address> are optional
-wpp send <CONTACT> --poll <question> <option1> <option2> ... ## --multiple (true|false) is optional, default is false
-wpp send <CONTACT> --contact <phone number> ## --name <name> is optional, --vcard is optional
+## --caption <caption> is optional (photos or videos are sent as "document")
+wpp send <CONTACT> --file <path>
+## --caption <caption>, --HD, --GIF are optional
+wpp send <CONTACT> --video <path> 
+## --caption <caption>, --HD are optional
+wpp send <CONTACT> --photo <path> 
+## --animated (true|false) is optional, default is false
+wpp send <CONTACT> --sticker <path>
+## --name <name> and --address <address> are optional
+wpp send <CONTACT> --location <latitude> <longitude>
+## --multiple (true|false) is optional, default is false
+wpp send <CONTACT> --poll <question> <option1> <option2> ...
+## --name <name> is optional, --vcard is optional
+wpp send <CONTACT> --contact <phone number>
 ```
 
 ---
@@ -320,7 +347,8 @@ Press `Ctrl+Space` inside the pager to open the inline message composer.
 | `Home` / `End`    | Jump to start / end of input  |
 | `Backspace`       | Delete character before cursor|
 | `Delete`          | Delete character after cursor |
-| `Esc` / `Ctrl+C`  | Cancel and close composer     |
+| `Esc`             | Cancel and close composer     |
+| `Shift+Enter`     | Insert new line               |
 
 ### Navigation controls
 
@@ -337,7 +365,8 @@ Press `Ctrl+Space` inside the pager to open the inline message composer.
 
 ### Pending pager improvements
 
-- Preserve the exact viewport position when older messages are loaded (currently approximated).
+- Preserve the exact viewport position when older messages are loaded
+  (currently approximated).
 - Non-blocking `Home` for very large histories (incremental or async loading).
 
 ---
@@ -389,7 +418,8 @@ wpp/
 
 ### Implemented
 
-**Session management**
+**Session management:**
+
 - QR code authentication (rendered in the terminal)
 - Phone number pairing code
 - Session aliases (multiple aliases per session)
@@ -400,7 +430,8 @@ wpp/
 - Session logout (removes all associated local aliases)
 - OpenWA session deletion with stale-reference cleanup
 
-**Chat listing**
+**Chat listing:**
+
 - List recent chats (most recent first, default limit 50)
 - Custom limit (`--limit`)
 - Fetch all chats with internal pagination (`--all`)
@@ -408,12 +439,14 @@ wpp/
 - Filter a selected set to unread only (`--filter unread`)
 - Chats sorted by most recent timestamp
 
-**Chat resolution**
+**Chat resolution:**
+
 - Resolve contact by exact chat ID (e.g. `5493511234567@c.us`)
 - Resolve by phone number (digit-normalized, formatting ignored)
 - Resolve by case-insensitive name match
 
-**Chat pager**
+**Chat pager:**
+
 - Full-screen alternate terminal buffer
 - Incoming/outgoing message alignment (left/right)
 - Visual grouping of consecutive same-sender messages
@@ -426,53 +459,66 @@ wpp/
 - Inline message composer (`Ctrl+Space`)
 - Send message from composer (`Enter`)
 
-**Chat actions**
+**Chat actions:**
+
 - View full chat history (`wpp chat <contact>`)
 - View only unread messages, oldest-first (`wpp chat <contact> --unread`)
 - Delete a chat (`wpp chat <contact> -d`)
 
-**Search**
+**Search:**
+
 - Search by partial name (case-insensitive)
 - Search by partial or formatted phone number
 
-**Messaging**
+**Messaging:**
+
 - Send text messages from the command line (`wpp send`)
 - Send text messages from inside the pager (composer)
 
 ### Pending
 
-**Chat listing**
+**Chat listing:**
+
 - `wpp list --dm` — direct messages only
 - `wpp list --groups` — group chats only
 - Interactive chat selector in `wpp list` and `wpp search`
 
-**Chat management**
+**Chat management:**
+
 ```bash
-wpp chat --block <contact>
-wpp chat --unblock <contact>
-wpp chat --archive <contact>
-wpp chat --unarchive <contact>
-wpp chat --pin <contact>
-wpp chat --unpin <contact>
-wpp chat --mute <contact>
-wpp chat --unmute <contact>
+wpp chat <contact> --block      # blocks a contact
+wpp chat <contact> --unblock    # unblocks a contact
+wpp chat <contact> --archive    # archives the chat
+wpp chat <contact> --unarchive  # unarchives the chat
+wpp chat <contact> --pin        # pins the chat
+wpp chat <contact> --unpin      # unpins the chat
+wpp chat <contact> --mute       # mutes the chat
+wpp chat <contact> --unmute     # unmutes the chat
+wpp chat <contact> --call       # calls a contact (audio call)
+wpp chat <contact> --video-call # calls a contact (video call)
+wpp chat <contact> --mark-read  # marks the chat as read
+wpp chat <contact> --mark-unread  # marks the chat as unread
 ```
 
-**Pager**
+**Pager:**
+
 - Exact viewport position preservation when older messages are loaded
 - Non-blocking `Home` for very large histories
 
-**Realtime**
-- `wpp listen` — stay running, display incoming messages and unread updates in real time
+**Realtime:**
 
-**Local sync**
+- `wpp listen` —
+  stay running, display incoming messages and unread updates in real time
+
+**Local sync:**
+
 - `wpp sync` — persist messages locally (`--limit`, `--who`)
 
 ---
 
 ## Roadmap
 
-```
+```text
 interactive chat selector (wpp list / wpp search)
         ↓
 wpp list --dm / --groups
@@ -496,7 +542,8 @@ native Rust backend (no OpenWA)
 - Minimal RAM footprint.
 - Composable and scriptable CLI commands.
 - Clean separation between CLI, application logic, and transport.
-- Backend-agnostic: the OpenWA layer can be swapped without touching the rest of the code.
+- Backend-agnostic:
+  the OpenWA layer can be swapped without touching the rest of the code.
 - Lazy loading so large histories never block the UI.
 
 ---
