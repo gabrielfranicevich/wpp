@@ -5,6 +5,8 @@ use crate::app::services::chats::ChatsService;
 use crate::app::services::messages::MessagePager;
 use crate::app::state::AppContext;
 use crate::terminal::pager::run as run_pager;
+use crate::terminal::pager::run_with_listener;
+use crate::whatsapp::models::Chat;
 
 pub async fn run(
   who: String,
@@ -29,7 +31,6 @@ pub async fn run(
 
   let chat = resolver.resolve(&who).await?;
 
-  // Opposing actions cancel each other out.
   let has_block_action = block ^ unblock;
   let has_archive_action = archive ^ unarchive;
   let has_pin_action = pin ^ unpin;
@@ -43,29 +44,26 @@ pub async fn run(
     || has_mute_action
     || has_read_action;
 
-  // With no display mode and no management action,
-  // `wpp chat <contact>` opens the normal pager.
   if !unread && !has_management_action {
-    let mut pager =
-      MessagePager::new(&context.whatsapp, &session_id, &chat.id).await?;
-
-    run_pager(&chat, &mut pager).await?;
+    open_realtime_chat(
+      &context,
+      &session_id,
+      &chat,
+      false,
+    )
+    .await?;
 
     return Ok(());
   }
 
-  // `--unread` is a display mode. Management actions run
-  // only after the pager has been closed.
   if unread {
-    let mut pager = MessagePager::new_unread(
-      &context.whatsapp,
+    open_realtime_chat(
+      &context,
       &session_id,
-      &chat.id,
-      chat.unread_count as usize,
+      &chat,
+      true,
     )
     .await?;
-
-    run_pager(&chat, &mut pager).await?;
   }
 
   let service = ChatsService::new(&context.whatsapp, &session_id);
@@ -133,7 +131,45 @@ pub async fn run(
   Ok(())
 }
 
-fn display_name<'a>(chat: &'a crate::whatsapp::models::Chat) -> &'a str {
+async fn open_realtime_chat(
+  context: &AppContext,
+  session_id: &str,
+  chat: &Chat,
+  unread: bool,
+) -> Result<()> {
+  let mut listener = context.whatsapp.listen(session_id).await?;
+
+  if unread {
+    let mut pager = MessagePager::new_unread(
+      &context.whatsapp,
+      session_id,
+      &chat.id,
+      chat.unread_count as usize,
+    )
+    .await?;
+
+    run_with_listener(
+      chat,
+      &mut pager,
+      &mut listener,
+    )
+    .await?;
+  } else {
+    let mut pager =
+      MessagePager::new(&context.whatsapp, session_id, &chat.id).await?;
+
+    run_with_listener(
+      chat,
+      &mut pager,
+      &mut listener,
+    )
+    .await?;
+  }
+
+  Ok(())
+}
+
+fn display_name<'a>(chat: &'a Chat) -> &'a str {
   if chat.name.trim().is_empty() {
     &chat.id
   } else {

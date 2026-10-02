@@ -1,8 +1,48 @@
 use crate::error::WppError;
 use crate::whatsapp::models::{
-  Chat, Message, MessagePage, PairingCodeResponse, QrCodeResponse, Session,
+  Chat,
+  Message,
+  MessagePage,
+  PairingCodeResponse,
+  QrCodeResponse,
+  RealtimeEvent,
+  Session,
 };
-use crate::whatsapp::openwa::client::OpenWAClient;
+use crate::whatsapp::openwa::client::{
+  OpenWAClient,
+  OpenWARealtimeListener,
+};
+
+/// Realtime listener exposed by the WhatsApp abstraction layer.
+///
+/// Concrete transport details remain hidden inside the backend modules.
+pub struct RealtimeListener {
+  backend: RealtimeBackend,
+}
+
+enum RealtimeBackend {
+  OpenWA(OpenWARealtimeListener),
+}
+
+impl RealtimeListener {
+  pub fn try_recv(&mut self) -> Option<RealtimeEvent> {
+    match &mut self.backend {
+      RealtimeBackend::OpenWA(listener) => listener.try_recv(),
+    }
+  }
+
+  pub async fn recv(&mut self) -> Option<RealtimeEvent> {
+    match &mut self.backend {
+      RealtimeBackend::OpenWA(listener) => listener.recv().await,
+    }
+  }
+
+  pub async fn disconnect(self) -> Result<(), WppError> {
+    match self.backend {
+      RealtimeBackend::OpenWA(listener) => listener.disconnect().await,
+    }
+  }
+}
 
 /// WhatsApp backend used by the application layer.
 ///
@@ -230,6 +270,19 @@ impl WhatsAppClient {
         client
           .get_chat_history(session_id, chat_id, limit, deep)
           .await
+      }
+    }
+  }
+
+  /// Open a realtime event listener for one WhatsApp session.
+  pub async fn listen(&self, session_id: &str) -> Result<RealtimeListener, WppError> {
+    match &self.backend {
+      Backend::OpenWA(client) => {
+        Ok(RealtimeListener {
+          backend: RealtimeBackend::OpenWA(
+            client.listen(session_id).await?,
+          ),
+        })
       }
     }
   }

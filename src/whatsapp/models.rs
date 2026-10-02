@@ -41,6 +41,19 @@ pub struct MessagePage {
   pub total: usize,
 }
 
+/// A realtime event received from the active WhatsApp backend.
+///
+/// The event payload remains backend-neutral JSON for now. A future
+/// synchronization layer can turn specific event types into strongly
+/// typed domain records without changing the listener transport.
+#[derive(Debug, Clone)]
+pub struct RealtimeEvent {
+  pub event: String,
+  pub timestamp: String,
+  pub session_id: String,
+  pub data: serde_json::Value,
+}
+
 /// WhatsApp session used by application code.
 #[derive(Debug, Clone)]
 pub struct Session {

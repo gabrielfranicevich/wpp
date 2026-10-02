@@ -92,8 +92,11 @@ async fn main() -> anyhow::Result<()> {
       cli::send::run(who, message).await?;
     }
 
-    cli::Command::Listen
-    | cli::Command::Sync { .. } => {
+    cli::Command::Listen => {
+      cli::listen::run().await?;
+    }
+
+    cli::Command::Sync { .. } => {
       eprintln!("Not yet implemented — coming in the next sprint.");
     }
   }

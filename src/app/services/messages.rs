@@ -217,6 +217,36 @@ impl<'a> MessagePager<'a> {
     Ok(loaded)
   }
 
+  /// Add a message received through the realtime listener.
+  ///
+  /// Messages belonging to another chat are ignored.
+  /// Duplicate message ids are ignored as well.
+  ///
+  /// In unread-only mode only incoming messages are accepted.
+  pub fn push_realtime_message(&mut self, message: Message) -> bool {
+    if message.chat_id != self.chat_id {
+      return false;
+    }
+
+    if self.unread_only
+      && message.direction != MessageDirection::Incoming
+    {
+      return false;
+    }
+
+    if self
+      .messages
+      .iter()
+      .any(|existing| existing.id == message.id)
+    {
+      return false;
+    }
+
+    self.messages.push(message);
+
+    true
+  }
+
   pub fn messages(&self) -> &[Message] {
     &self.messages
   }

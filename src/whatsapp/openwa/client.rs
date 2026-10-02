@@ -1,24 +1,81 @@
+use futures_util::FutureExt;
 use reqwest::{Client, Response};
+use rust_socketio::{
+  asynchronous::{Client as SocketIoClient, ClientBuilder},
+  Payload,
+};
+use serde_json::{json, Value};
+use tokio::sync::mpsc;
 
 use super::models::{
-  ChatHistoryMessageRecord, ChatSummary, MessageListResponse,
+  ChatHistoryMessageRecord,
+  ChatSummary,
+  MessageListResponse,
   PairingCodeResponse as OpenWAPairingCodeResponse,
   QrCodeResponse as OpenWAQrCodeResponse,
+  RealtimeEnvelope,
   Session as OpenWASession,
 };
 
 use crate::error::WppError;
 use crate::whatsapp::models::{
-  Chat, Message, MessageDirection, MessagePage, PairingCodeResponse, QrCodeResponse, Session,
+  Chat,
+  Message,
+  MessageDirection,
+  MessagePage,
+  PairingCodeResponse,
+  QrCodeResponse,
+  RealtimeEvent,
+  Session,
 };
 
-/// Thin REST transport for OpenWA.
+const REALTIME_NAMESPACE: &str = "/events";
+const REALTIME_EVENT_NAME: &str = "message";
+const REALTIME_MESSAGE_RECEIVED: &str = "message.received";
+const REALTIME_CHANNEL_CAPACITY: usize = 256;
+
+/// Thin REST + realtime transport for OpenWA.
 ///
-/// OpenWA-specific URLs, headers and wire models stay inside this module.
+/// OpenWA-specific URLs, headers, Socket.IO namespaces and wire models
+/// stay inside this module.
 pub struct OpenWAClient {
   http: Client,
   base_url: String,
   api_key: Option<String>,
+}
+
+/// Live realtime listener backed by OpenWA Socket.IO.
+pub struct OpenWARealtimeListener {
+  socket: SocketIoClient,
+  receiver: mpsc::Receiver<RealtimeEvent>,
+}
+
+impl OpenWARealtimeListener {
+  pub fn try_recv(&mut self) -> Option<RealtimeEvent> {
+    match self.receiver.try_recv() {
+      Ok(event) => Some(event),
+
+      Err(mpsc::error::TryRecvError::Empty) => None,
+
+      Err(mpsc::error::TryRecvError::Disconnected) => None,
+    }
+  }
+
+  pub async fn recv(&mut self) -> Option<RealtimeEvent> {
+    self.receiver.recv().await
+  }
+
+  pub async fn disconnect(self) -> Result<(), WppError> {
+    self
+      .socket
+      .disconnect()
+      .await
+      .map_err(|error| {
+        WppError::Other(format!(
+          "failed to disconnect realtime listener: {error}"
+        ))
+      })
+  }
 }
 
 impl OpenWAClient {
@@ -95,7 +152,9 @@ impl OpenWAClient {
 
   /// GET /api/sessions/:id
   pub async fn get_session(&self, session_id: &str) -> Result<Session, WppError> {
-    let builder = self.http.get(self.url(&format!("/sessions/{session_id}")));
+    let builder = self
+      .http
+      .get(self.url(&format!("/sessions/{session_id}")));
 
     let response = self.request(builder).send().await?;
 
@@ -122,7 +181,8 @@ impl OpenWAClient {
 
       let response = self.request(builder).send().await?;
 
-      let page: Vec<OpenWASession> = Self::check(response).await?.json().await?;
+      let page: Vec<OpenWASession> =
+        Self::check(response).await?.json().await?;
 
       let page_len = page.len();
 
@@ -172,7 +232,8 @@ impl OpenWAClient {
 
     let response = self.request(builder).send().await?;
 
-    let qr: OpenWAQrCodeResponse = Self::check(response).await?.json().await?;
+    let qr: OpenWAQrCodeResponse =
+      Self::check(response).await?.json().await?;
 
     Ok(qr.into())
   }
@@ -183,18 +244,22 @@ impl OpenWAClient {
     session_id: &str,
     phone: &str,
   ) -> Result<PairingCodeResponse, WppError> {
-    let clean_phone: String = phone.chars().filter(|c| c.is_ascii_digit()).collect();
+    let clean_phone: String =
+      phone.chars().filter(|c| c.is_ascii_digit()).collect();
 
     let builder = self
       .http
-      .post(self.url(&format!("/sessions/{session_id}/pairing-code")))
+      .post(self.url(&format!(
+        "/sessions/{session_id}/pairing-code"
+      )))
       .json(&serde_json::json!({
         "phoneNumber": clean_phone
       }));
 
     let response = self.request(builder).send().await?;
 
-    let pairing: OpenWAPairingCodeResponse = Self::check(response).await?.json().await?;
+    let pairing: OpenWAPairingCodeResponse =
+      Self::check(response).await?.json().await?;
 
     Ok(pairing.into())
   }
@@ -208,12 +273,15 @@ impl OpenWAClient {
   ) -> Result<Vec<Chat>, WppError> {
     let builder = self
       .http
-      .get(self.url(&format!("/sessions/{session_id}/chats")))
+      .get(self.url(&format!(
+        "/sessions/{session_id}/chats"
+      )))
       .query(&[("limit", limit), ("offset", offset)]);
 
     let response = self.request(builder).send().await?;
 
-    let chats: Vec<ChatSummary> = Self::check(response).await?.json().await?;
+    let chats: Vec<ChatSummary> =
+      Self::check(response).await?.json().await?;
 
     Ok(chats.into_iter().map(Chat::from).collect())
   }
@@ -228,7 +296,9 @@ impl OpenWAClient {
   ) -> Result<(), WppError> {
     let builder = self
       .http
-      .post(self.url(&format!("/sessions/{session_id}/chats/delete")))
+      .post(self.url(&format!(
+        "/sessions/{session_id}/chats/delete"
+      )))
       .json(&serde_json::json!({
         "chatId": chat_id,
       }));
@@ -472,12 +542,15 @@ impl OpenWAClient {
 
     let builder = self
       .http
-      .get(self.url(&format!("/sessions/{session_id}/messages")))
+      .get(self.url(&format!(
+        "/sessions/{session_id}/messages"
+      )))
       .query(&params);
 
     let response = self.request(builder).send().await?;
 
-    let response: MessageListResponse = Self::check(response).await?.json().await?;
+    let response: MessageListResponse =
+      Self::check(response).await?.json().await?;
 
     let messages = response
       .messages
@@ -562,6 +635,132 @@ impl OpenWAClient {
         status: String::new(),
       })
       .collect())
+  }
+
+  /// Connect to OpenWA's realtime Socket.IO namespace and subscribe
+  /// to incoming messages for one session.
+  ///
+  /// OpenWA exposes realtime events under `/events`. Messages are
+  /// delivered through the Socket.IO `message` event as an envelope
+  /// containing the actual event name, session id and event data.
+  pub async fn listen(
+    &self,
+    session_id: &str,
+  ) -> Result<OpenWARealtimeListener, WppError> {
+    let (sender, receiver) =
+      mpsc::channel(REALTIME_CHANNEL_CAPACITY);
+
+    let subscription = json!({
+      "type": "subscribe",
+      "sessionId": session_id,
+      "events": [REALTIME_MESSAGE_RECEIVED],
+      "requestId": format!("wpp-listen-{session_id}"),
+    });
+
+    let subscription_for_open = subscription.clone();
+    let expected_session_id = session_id.to_string();
+
+    let sender_for_message = sender.clone();
+
+    let mut builder = ClientBuilder::new(&self.base_url)
+      .namespace(REALTIME_NAMESPACE)
+      .reconnect(true)
+      .reconnect_on_disconnect(true)
+      .reconnect_delay(1000, 5000)
+      .on("open", move |_, socket| {
+        let subscription = subscription_for_open.clone();
+
+        async move {
+          if let Err(error) =
+            socket.emit(REALTIME_EVENT_NAME, subscription).await
+          {
+            eprintln!(
+              "wpp: realtime subscription failed: {error}"
+            );
+          }
+        }
+        .boxed()
+      })
+      .on("message", move |payload, _| {
+        let sender = sender_for_message.clone();
+        let expected_session_id = expected_session_id.clone();
+
+        async move {
+          let Some(value) = payload_to_json(payload) else {
+            return;
+          };
+
+          let Ok(envelope) =
+            serde_json::from_value::<RealtimeEnvelope>(value)
+          else {
+            return;
+          };
+
+          if envelope.kind != "event" {
+            return;
+          }
+
+          let Some(payload) = envelope.payload else {
+            return;
+          };
+
+          if payload.event != REALTIME_MESSAGE_RECEIVED {
+            return;
+          }
+
+          if payload.session_id != expected_session_id {
+            return;
+          }
+
+          let event = RealtimeEvent {
+            event: payload.event,
+            timestamp: envelope.timestamp,
+            session_id: payload.session_id,
+            data: payload.data,
+          };
+
+          let _ = sender.send(event).await;
+        }
+        .boxed()
+      })
+      .on("error", |payload, _| {
+        async move {
+          eprintln!(
+            "wpp: realtime listener error: {payload:?}"
+          );
+        }
+        .boxed()
+      });
+
+    if let Some(api_key) = &self.api_key {
+      builder = builder.auth(json!({
+        "apiKey": api_key,
+      }));
+    }
+
+    let socket = builder
+      .connect()
+      .await
+      .map_err(|error| {
+        WppError::Other(format!(
+          "failed to connect to OpenWA realtime events: {error}"
+        ))
+      })?;
+
+    Ok(OpenWARealtimeListener {
+      socket,
+      receiver,
+    })
+  }
+}
+
+fn payload_to_json(payload: Payload) -> Option<Value> {
+  match payload {
+    Payload::Text(values) => values.into_iter().next(),
+
+    Payload::String(value) => serde_json::from_str(&value).ok(),
+
+    Payload::Binary(_) => None,
   }
 }
 

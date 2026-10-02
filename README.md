@@ -5,8 +5,9 @@
 `wpp` is a lightweight terminal client for WhatsApp.
 No GUI, no browser, no Electron.
 It talks to WhatsApp through an [OpenWA](https://openwa.js.org/) server
-(powered by Baileys) over REST, and is designed so that the OpenWA transport
-layer can eventually be replaced by a native Rust implementation.
+(powered by Baileys) over REST and Socket.IO, and is designed so that the
+OpenWA transport layer can eventually be replaced by a native Rust
+implementation.
 
 ---
 
@@ -275,6 +276,8 @@ wpp chat Gabriel --mute --unmute
 wpp chat Gabriel --mark-read --mark-unread
 ```
 
+in the tui chat updates in real time through OpenWA `message.received` events
+
 Audio and video calls are not exposed as outbound chat actions yet.
 
 **Planned:**
@@ -285,7 +288,6 @@ wpp chat <contact> --video-call   # calls a contact (video call)
 ```
 
 In the `wpp chat <contact>` tui:
-  chat should update real time
   the options to select messages, look for a message, reply a specific message,
   call, video call, send audio, erase a message, send multimedia, polls,
   location, documents, stickers, contacts
@@ -348,9 +350,15 @@ wpp call <CONTACT> --video  # video call
 
 ---
 
-### `wpp listen` *(planned)*
+### `wpp listen`
 
 Stay running and display incoming messages and unread-chat updates in real time.
+
+```bash
+wpp listen
+```
+
+Press `Ctrl+C` to stop.
 
 ---
 
@@ -444,6 +452,7 @@ wpp/
     │   ├── chat.rs             # Chat history + management
     │   ├── search.rs           # Chat search
     │   └── send.rs             # Message sending
+    │   └── listen.rs           # Realtime incoming message listener
     │
     ├── app/                    # Application logic
     │   ├── config.rs           # TOML config + session store
@@ -513,6 +522,8 @@ wpp/
 - Send message from composer (`Enter`)
 - Multiline message composition with (`Shift+Enter`)
 - `Ctrl+C` does not cancel the composer
+- Realtime incoming messages while a chat is open
+- Automatic scroll-to-bottom when new messages arrive while already at the bottom
 
 **Chat actions:**
 
@@ -537,6 +548,11 @@ wpp/
 - Send text messages from the command line (`wpp send`)
 - Send text messages from inside the pager (composer)
 
+**Realtime:**
+
+- `wpp listen` — subscribe to OpenWA `message.received` events and display
+  incoming messages in real time
+
 ### Pending
 
 **Chat listing:**
@@ -557,11 +573,6 @@ wpp chat <contact> --video-call
 - Exact viewport position preservation when older messages are loaded
 - Non-blocking `Home` for very large histories
 
-**Realtime:**
-
-- `wpp listen` —
-  stay running, display incoming messages and unread updates in real time
-
 **Local sync:**
 
 - `wpp sync` — persist messages locally (`--limit`, `--who`)
@@ -578,8 +589,6 @@ wpp list --dm / --groups
 chat management
         ↓
 pager viewport fix + async Home
-        ↓
-wpp listen (realtime events)
         ↓
 wpp sync (local message cache)
         ↓

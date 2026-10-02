@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 
 pub mod chat;
 pub mod list;
+pub mod listen;
 pub mod login;
 pub mod logout;
 pub mod search;
