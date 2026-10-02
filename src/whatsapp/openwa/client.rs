@@ -575,7 +575,6 @@ impl OpenWAClient {
 
     Ok(MessagePage {
       messages,
-      total: response.total,
     })
   }
 
@@ -715,7 +714,6 @@ impl OpenWAClient {
           let event = RealtimeEvent {
             event: payload.event,
             timestamp: envelope.timestamp,
-            session_id: payload.session_id,
             data: payload.data,
           };
 
@@ -758,9 +756,9 @@ fn payload_to_json(payload: Payload) -> Option<Value> {
   match payload {
     Payload::Text(values) => values.into_iter().next(),
 
-    Payload::String(value) => serde_json::from_str(&value).ok(),
-
     Payload::Binary(_) => None,
+
+    _ => None,
   }
 }
 
@@ -772,7 +770,6 @@ impl From<OpenWASession> for Session {
       status: session.status,
       phone: session.phone,
       push_name: session.push_name,
-      engine_loaded: session.engine_loaded,
     }
   }
 }
@@ -781,7 +778,6 @@ impl From<OpenWAQrCodeResponse> for QrCodeResponse {
   fn from(response: OpenWAQrCodeResponse) -> Self {
     Self {
       qr_code: response.qr_code,
-      status: response.status,
     }
   }
 }
@@ -803,10 +799,6 @@ impl From<ChatSummary> for Chat {
       unread_count: chat.unread_count,
       last_message: chat.last_message,
       timestamp: chat.timestamp,
-      kind: chat.kind,
-      archived: chat.archived,
-      pinned: chat.pinned,
-      muted: chat.muted,
     }
   }
 }

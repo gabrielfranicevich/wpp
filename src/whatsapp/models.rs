@@ -9,10 +9,6 @@ pub struct Chat {
   pub unread_count: u32,
   pub last_message: Option<String>,
   pub timestamp: i64,
-  pub kind: String,
-  pub archived: bool,
-  pub pinned: bool,
-  pub muted: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -38,7 +34,6 @@ pub enum MessageDirection {
 #[derive(Debug, Clone)]
 pub struct MessagePage {
   pub messages: Vec<Message>,
-  pub total: usize,
 }
 
 /// A realtime event received from the active WhatsApp backend.
@@ -50,7 +45,6 @@ pub struct MessagePage {
 pub struct RealtimeEvent {
   pub event: String,
   pub timestamp: String,
-  pub session_id: String,
   pub data: serde_json::Value,
 }
 
@@ -62,14 +56,12 @@ pub struct Session {
   pub status: String,
   pub phone: Option<String>,
   pub push_name: Option<String>,
-  pub engine_loaded: Option<bool>,
 }
 
 /// QR response.
 #[derive(Debug, Clone)]
 pub struct QrCodeResponse {
   pub qr_code: String,
-  pub status: String,
 }
 
 /// Phone pairing response.

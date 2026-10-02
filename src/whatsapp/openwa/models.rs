@@ -13,9 +13,6 @@ pub struct Session {
 
   #[serde(default)]
   pub push_name: Option<String>,
-
-  #[serde(default)]
-  pub engine_loaded: Option<bool>,
 }
 
 /// Persisted message returned by OpenWA.
@@ -23,12 +20,6 @@ pub struct Session {
 #[serde(rename_all = "camelCase")]
 pub struct MessageRecord {
   pub id: String,
-
-  #[serde(default)]
-  pub session_id: String,
-
-  #[serde(default)]
-  pub wa_message_id: Option<String>,
 
   pub chat_id: String,
 
@@ -79,16 +70,7 @@ pub struct ChatHistoryMessageRecord {
   pub from_me: bool,
 
   #[serde(default)]
-  pub is_group: bool,
-
-  #[serde(default)]
   pub author: Option<String>,
-
-  #[serde(default)]
-  pub is_lid_sender: Option<bool>,
-
-  #[serde(default)]
-  pub sender_phone: Option<String>,
 }
 
 /// Top-level envelope sent through the OpenWA realtime `message` event.
@@ -119,7 +101,6 @@ pub struct RealtimeEnvelopePayload {
 #[derive(Debug, Clone, Deserialize)]
 pub struct MessageListResponse {
   pub messages: Vec<MessageRecord>,
-  pub total: usize,
 }
 
 /// QR code response from OpenWA.
@@ -127,7 +108,6 @@ pub struct MessageListResponse {
 #[serde(rename_all = "camelCase")]
 pub struct QrCodeResponse {
   pub qr_code: String,
-  pub status: String,
 }
 
 /// Pairing code response from OpenWA.
@@ -156,18 +136,6 @@ pub struct ChatSummary {
 
   #[serde(default)]
   pub timestamp: i64,
-
-  #[serde(default)]
-  pub kind: String,
-
-  #[serde(default)]
-  pub archived: bool,
-
-  #[serde(default)]
-  pub pinned: bool,
-
-  #[serde(default)]
-  pub muted: bool,
 }
 
 #[cfg(test)]

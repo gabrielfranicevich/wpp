@@ -238,12 +238,6 @@ impl Config {
     self.find_session(alias)
   }
 
-  /// Get the active session's OpenWA UUID, or error.
-  pub fn require_active_session(&self) -> anyhow::Result<&SessionEntry> {
-    self.active_entry()
-      .map(|(_, entry)| entry)
-      .ok_or_else(|| anyhow::anyhow!("No active session. Run `wpp login` first."))
-  }
 
   /// Find a session by alias or phone number.
   ///
@@ -401,18 +395,6 @@ impl Config {
 
       suffix += 1;
     }
-  }
-
-  /// Remove a local session by alias.
-  ///
-  /// Because aliases belong to a session, removing one alias through
-  /// this operation removes the entire local session representation.
-  pub fn remove_session(&mut self, alias: &str) -> Option<SessionEntry> {
-    let session_id = self
-      .find_by_alias(alias)
-      .map(|(_, entry)| entry.id.clone())?;
-
-    self.remove_session_by_id(&session_id)
   }
 
   /// Remove one OpenWA session and all of its aliases.
@@ -609,21 +591,6 @@ mod tests {
     assert!(removed.is_some());
     assert!(config.sessions.is_empty());
     assert!(config.active_session.is_none());
-  }
-
-  #[test]
-  fn remove_session_by_alias_removes_entire_session() {
-    let mut config = Config::default();
-
-    config.sessions.insert(
-      "session-id".to_string(),
-      session("session-id", &["personal", "phone"]),
-    );
-
-    let removed = config.remove_session("phone");
-
-    assert!(removed.is_some());
-    assert!(config.sessions.is_empty());
   }
 
   #[test]

@@ -22,25 +22,6 @@ const BUBBLE_MAX_WIDTH_RATIO: usize = 60;
 const BUBBLE_MIN_WIDTH: usize = 12;
 const MESSAGE_PREFIX_WIDTH: usize = 2;
 
-pub async fn run(
-  chat: &Chat,
-  pager: &mut MessagePager<'_>,
-) -> anyhow::Result<()> {
-  let mut terminal = TerminalGuard::enter()?;
-
-  let result = run_loop(
-    &mut terminal.stdout,
-    chat,
-    pager,
-    None,
-  )
-  .await;
-
-  drop(terminal);
-
-  result
-}
-
 pub async fn run_with_listener(
   chat: &Chat,
   pager: &mut MessagePager<'_>,
