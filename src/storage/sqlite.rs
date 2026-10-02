@@ -111,8 +111,9 @@ impl LocalMessageStore {
     Ok(dir.join(DATABASE_FILE))
   }
 
-  #[cfg(test)]
-  fn in_memory() -> anyhow::Result<Self> {
+  /// Open an in-memory message store with the same schema as the
+  /// persistent cache. Useful for tests and benchmarks.
+  pub fn in_memory() -> anyhow::Result<Self> {
     let connection = Connection::open_in_memory()?;
 
     initialize(&connection)?;

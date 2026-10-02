@@ -1032,7 +1032,7 @@ fn sender_color(sender: &str) -> Color {
   colors[hash % colors.len()]
 }
 
-fn message_body(message: &Message) -> String {
+pub fn message_body(message: &Message) -> String {
   let body = message
     .body
     .as_deref()
@@ -1066,7 +1066,7 @@ fn message_body(message: &Message) -> String {
   }
 }
 
-fn wrap_text(
+pub fn wrap_text(
   text: &str,
   width: usize,
 ) -> Vec<String> {
@@ -1144,7 +1144,7 @@ fn wrap_text(
   result
 }
 
-fn fit_line(
+pub fn fit_line(
   value: &str,
   width: usize,
 ) -> String {

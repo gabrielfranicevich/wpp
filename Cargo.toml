@@ -22,15 +22,18 @@ dirs = "6"
 futures-util = "0.3"
 rust_socketio = { version = "0.6", features = ["async"] }
 rusqlite = { version = "0.39.0", features = ["bundled"] }
-whatsapp-rust = {
-  version = "0.7",
-  default-features = false,
-  features = [
-    "signal",
-    "sqlite-storage",
-    "tokio-native",
-    "tokio-runtime",
-    "tokio-transport",
-    "ureq-client",
-  ],
-}
+whatsapp-rust = { version = "0.7", default-features = false, features = [
+  "signal",
+  "sqlite-storage",
+  "tokio-native",
+  "tokio-runtime",
+  "tokio-transport",
+  "ureq-client",
+] }
+
+[dev-dependencies]
+divan = { version = "5.0.2", package = "codspeed-divan-compat" }
+
+[[bench]]
+name = "core"
+harness = false

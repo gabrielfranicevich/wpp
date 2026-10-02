@@ -1,11 +1,6 @@
 use clap::Parser;
 
-mod app;
-mod cli;
-mod error;
-mod storage;
-mod terminal;
-mod whatsapp;
+use wpp::cli;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {

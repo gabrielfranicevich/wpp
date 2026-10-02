@@ -1,5 +1,7 @@
 ﻿# wpp
 
+[![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://app.codspeed.io/gabrielfranicevich/wpp?utm_source=badge)
+
 > WhatsApp from the terminal — written in Rust.
 
 `wpp` is a lightweight terminal client for WhatsApp.

@@ -193,7 +193,7 @@ fn render_qr_payload(payload: &str) -> Result<()> {
   Ok(())
 }
 
-fn normalize_preview(value: &str) -> String {
+pub fn normalize_preview(value: &str) -> String {
   value
     .lines()
     .collect::<Vec<_>>()
@@ -203,7 +203,7 @@ fn normalize_preview(value: &str) -> String {
     .join(" ")
 }
 
-fn truncate(value: &str, max_chars: usize) -> String {
+pub fn truncate(value: &str, max_chars: usize) -> String {
   let mut chars = value.chars();
   let mut out = String::new();
 

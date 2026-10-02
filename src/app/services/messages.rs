@@ -258,7 +258,7 @@ impl<'a> MessagePager<'a> {
 
 /// Select the last `count` incoming messages while preserving
 /// their original chronological order.
-fn take_unread_messages(messages: &[Message], count: usize) -> Vec<Message> {
+pub fn take_unread_messages(messages: &[Message], count: usize) -> Vec<Message> {
   if count == 0 {
     return Vec::new();
   }

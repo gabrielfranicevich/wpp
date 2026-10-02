@@ -354,7 +354,7 @@ fn ensure_contact_chat(chat: &Chat) -> Result<(), WppError> {
   Ok(())
 }
 
-fn matches_search_query(
+pub fn matches_search_query(
   chat: &Chat,
   query_lower: &str,
   normalized_phone: &str,
@@ -369,7 +369,7 @@ fn matches_search_query(
     && normalize_phone(&chat.id).contains(normalized_phone)
 }
 
-fn normalize_phone(value: &str) -> String {
+pub fn normalize_phone(value: &str) -> String {
   value.chars().filter(|c| c.is_ascii_digit()).collect()
 }
 
