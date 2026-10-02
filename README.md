@@ -251,29 +251,37 @@ This is a no-op for the block/unblock actions.
 
 ```bash
 wpp chat <contact> --delete
-wpp chat <contact> --block
-wpp chat <contact> --unblock
+wpp chat <contact> --block        # blocks a contact
+wpp chat <contact> --unblock      # unblocks a contact
+wpp chat <contact> --archive      # archives the chat
+wpp chat <contact> --unarchive    # unarchives the chat
+wpp chat <contact> --pin          # pins the chat
+wpp chat <contact> --unpin        # unpins the chat
+wpp chat <contact> --mute         # mutes the chat
+wpp chat <contact> --unmute       # unmutes the chat
+wpp chat <contact> --mark-read    # marks the chat as read
+wpp chat <contact> --mark-unread  # marks the chat as unread
 ```
 
 Groups cannot be blocked or unblocked.
 
-**Planned:**
-
-compatible options should be stackable
+Opposing actions cancel each other for each action pair:
 
 ```bash
-wpp chat <contact> --block      # blocks a contact
-wpp chat <contact> --unblock    # unblocks a contact
-wpp chat <contact> --archive    # archives the chat
-wpp chat <contact> --unarchive  # unarchives the chat
-wpp chat <contact> --pin        # pins the chat
-wpp chat <contact> --unpin      # unpins the chat
-wpp chat <contact> --mute       # mutes the chat
-wpp chat <contact> --unmute     # unmutes the chat
-wpp chat <contact> --call       # calls a contact (audio call)
-wpp chat <contact> --video-call # calls a contact (video call)
-wpp chat <contact> --mark-read  # marks the chat as read
-wpp chat <contact> --mark-unread  # marks the chat as unread
+wpp chat Gabriel --block --unblock
+wpp chat Gabriel --archive --unarchive
+wpp chat Gabriel --pin --unpin
+wpp chat Gabriel --mute --unmute
+wpp chat Gabriel --mark-read --mark-unread
+```
+
+Audio and video calls are not exposed as outbound chat actions yet.
+
+**Planned:**
+
+```bash
+wpp chat <contact> --call         # calls a contact (audio call)
+wpp chat <contact> --video-call   # calls a contact (video call)
 ```
 
 In the `wpp chat <contact>` tui:
@@ -435,7 +443,7 @@ wpp/
     │   ├── switch.rs           # Session switching + listing
     │   ├── session.rs          # OpenWA session management
     │   ├── list.rs             # Chat listing
-    │   ├── chat.rs             # Chat history + delete
+    │   ├── chat.rs             # Chat history + management
     │   ├── search.rs           # Chat search
     │   └── send.rs             # Message sending
     │
@@ -443,7 +451,7 @@ wpp/
     │   ├── config.rs           # TOML config + session store
     │   ├── state.rs            # Runtime context (WhatsApp client + active session)
     │   └── services/
-    │       ├── chats.rs        # Chat listing, filtering, search, delete
+    │       ├── chats.rs        # Chat listing, filtering, search, management
     │       ├── chat_resolver.rs  # Contact resolution (name / phone / ID)
     │       └── messages.rs     # Lazy message history + send
     │
@@ -515,6 +523,10 @@ wpp/
 - Delete a chat (`wpp chat <contact> -d`)
 - Block a contact (`wpp chat <contact> --block`)
 - Unblock a contact (`wpp chat <contact> --unblock`)
+- Archive or unarchive a chat (`--archive`, `--unarchive`)
+- Pin or unpin a chat (`--pin`, `--unpin`)
+- Mute or unmute a chat (`--mute`, `--unmute`)
+- Mark a chat as read or unread (`--mark-read`, `--mark-unread`)
 - Combine display and management options
 
 **Search:**
@@ -538,16 +550,8 @@ wpp/
 **Chat management:**
 
 ```bash
-wpp chat <contact> --archive
-wpp chat <contact> --unarchive
-wpp chat <contact> --pin
-wpp chat <contact> --unpin
-wpp chat <contact> --mute
-wpp chat <contact> --unmute
 wpp chat <contact> --call
 wpp chat <contact> --video-call
-wpp chat <contact> --mark-read
-wpp chat <contact> --mark-unread
 ```
 
 **Pager:**
@@ -573,7 +577,7 @@ interactive chat selector (wpp list / wpp search)
         ↓
 wpp list --dm / --groups
         ↓
-chat management (block / archive / pin / mute)
+chat management
         ↓
 pager viewport fix + async Home
         ↓

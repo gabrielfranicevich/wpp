@@ -100,6 +100,38 @@ pub enum Command {
     /// Unblock the contact
     #[arg(long)]
     unblock: bool,
+
+    /// Archive the chat
+    #[arg(long)]
+    archive: bool,
+
+    /// Unarchive the chat
+    #[arg(long)]
+    unarchive: bool,
+
+    /// Pin the chat
+    #[arg(long)]
+    pin: bool,
+
+    /// Unpin the chat
+    #[arg(long)]
+    unpin: bool,
+
+    /// Mute the chat indefinitely
+    #[arg(long)]
+    mute: bool,
+
+    /// Unmute the chat
+    #[arg(long)]
+    unmute: bool,
+
+    /// Mark the chat as read
+    #[arg(long)]
+    mark_read: bool,
+
+    /// Mark the chat as unread
+    #[arg(long)]
+    mark_unread: bool,
   },
 
   /// Send a text message

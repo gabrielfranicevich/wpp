@@ -117,6 +117,76 @@ impl WhatsAppClient {
     }
   }
 
+  pub async fn archive_chat(
+    &self,
+    session_id: &str,
+    chat_id: &str,
+    archive: bool,
+  ) -> Result<(), WppError> {
+    match &self.backend {
+      Backend::OpenWA(client) => {
+        client.archive_chat(session_id, chat_id, archive).await
+      }
+    }
+  }
+
+  pub async fn pin_chat(
+    &self,
+    session_id: &str,
+    chat_id: &str,
+    pin: bool,
+  ) -> Result<(), WppError> {
+    match &self.backend {
+      Backend::OpenWA(client) => {
+        client.pin_chat(session_id, chat_id, pin).await
+      }
+    }
+  }
+
+  pub async fn mute_chat(
+    &self,
+    session_id: &str,
+    chat_id: &str,
+    mute_until: Option<i64>,
+  ) -> Result<(), WppError> {
+    match &self.backend {
+      Backend::OpenWA(client) => {
+        client
+          .mute_chat(session_id, chat_id, mute_until)
+          .await
+      }
+    }
+  }
+
+  pub async fn mark_chat_read(
+    &self,
+    session_id: &str,
+    chat_id: &str,
+    message_ids: &[String],
+  ) -> Result<(), WppError> {
+    match &self.backend {
+      Backend::OpenWA(client) => {
+        client
+          .mark_chat_read(session_id, chat_id, message_ids)
+          .await
+      }
+    }
+  }
+
+  pub async fn mark_chat_unread(
+    &self,
+    session_id: &str,
+    chat_id: &str,
+  ) -> Result<(), WppError> {
+    match &self.backend {
+      Backend::OpenWA(client) => {
+        client
+          .mark_chat_unread(session_id, chat_id)
+          .await
+      }
+    }
+  }
+
   pub async fn send_text(
     &self,
     session_id: &str,

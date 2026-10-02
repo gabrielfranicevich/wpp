@@ -2,7 +2,8 @@ use reqwest::{Client, Response};
 
 use super::models::{
   ChatHistoryMessageRecord, ChatSummary, MessageListResponse,
-  PairingCodeResponse as OpenWAPairingCodeResponse, QrCodeResponse as OpenWAQrCodeResponse,
+  PairingCodeResponse as OpenWAPairingCodeResponse,
+  QrCodeResponse as OpenWAQrCodeResponse,
   Session as OpenWASession,
 };
 
@@ -69,7 +70,7 @@ impl OpenWAClient {
       .http
       .post(self.url("/sessions"))
       .json(&serde_json::json!({
-       "name": name
+        "name": name
       }));
 
     let response = self.request(builder).send().await?;
@@ -188,7 +189,7 @@ impl OpenWAClient {
       .http
       .post(self.url(&format!("/sessions/{session_id}/pairing-code")))
       .json(&serde_json::json!({
-       "phoneNumber": clean_phone
+        "phoneNumber": clean_phone
       }));
 
     let response = self.request(builder).send().await?;
@@ -273,6 +274,143 @@ impl OpenWAClient {
       .delete(self.url(&format!(
         "/sessions/{session_id}/contacts/{contact_id}/block"
       )));
+
+    let response = self.request(builder).send().await?;
+
+    Self::check(response).await?;
+
+    Ok(())
+  }
+
+  /// POST /api/sessions/:id/chats/archive
+  ///
+  /// Archive or unarchive a chat.
+  pub async fn archive_chat(
+    &self,
+    session_id: &str,
+    chat_id: &str,
+    archive: bool,
+  ) -> Result<(), WppError> {
+    let builder = self
+      .http
+      .post(self.url(&format!(
+        "/sessions/{session_id}/chats/archive"
+      )))
+      .json(&serde_json::json!({
+        "chatId": chat_id,
+        "archive": archive,
+      }));
+
+    let response = self.request(builder).send().await?;
+
+    Self::check(response).await?;
+
+    Ok(())
+  }
+
+  /// POST /api/sessions/:id/chats/pin
+  ///
+  /// Pin or unpin a chat.
+  pub async fn pin_chat(
+    &self,
+    session_id: &str,
+    chat_id: &str,
+    pin: bool,
+  ) -> Result<(), WppError> {
+    let builder = self
+      .http
+      .post(self.url(&format!(
+        "/sessions/{session_id}/chats/pin"
+      )))
+      .json(&serde_json::json!({
+        "chatId": chat_id,
+        "pin": pin,
+      }));
+
+    let response = self.request(builder).send().await?;
+
+    Self::check(response).await?;
+
+    Ok(())
+  }
+
+  /// POST /api/sessions/:id/chats/mute
+  ///
+  /// Mute until an epoch-milliseconds timestamp.
+  /// `null` un-mutes the chat. `0` means indefinite mute.
+  pub async fn mute_chat(
+    &self,
+    session_id: &str,
+    chat_id: &str,
+    mute_until: Option<i64>,
+  ) -> Result<(), WppError> {
+    let builder = self
+      .http
+      .post(self.url(&format!(
+        "/sessions/{session_id}/chats/mute"
+      )))
+      .json(&serde_json::json!({
+        "chatId": chat_id,
+        "muteUntil": mute_until,
+      }));
+
+    let response = self.request(builder).send().await?;
+
+    Self::check(response).await?;
+
+    Ok(())
+  }
+
+  /// POST /api/sessions/:id/chats/read
+  ///
+  /// Mark a chat as read. OpenWA accepts up to 100 message ids.
+  pub async fn mark_chat_read(
+    &self,
+    session_id: &str,
+    chat_id: &str,
+    message_ids: &[String],
+  ) -> Result<(), WppError> {
+    let body = if message_ids.is_empty() {
+      serde_json::json!({
+        "chatId": chat_id,
+      })
+    } else {
+      serde_json::json!({
+        "chatId": chat_id,
+        "messageIds": message_ids,
+      })
+    };
+
+    let builder = self
+      .http
+      .post(self.url(&format!(
+        "/sessions/{session_id}/chats/read"
+      )))
+      .json(&body);
+
+    let response = self.request(builder).send().await?;
+
+    Self::check(response).await?;
+
+    Ok(())
+  }
+
+  /// POST /api/sessions/:id/chats/unread
+  ///
+  /// Mark a chat as unread.
+  pub async fn mark_chat_unread(
+    &self,
+    session_id: &str,
+    chat_id: &str,
+  ) -> Result<(), WppError> {
+    let builder = self
+      .http
+      .post(self.url(&format!(
+        "/sessions/{session_id}/chats/unread"
+      )))
+      .json(&serde_json::json!({
+        "chatId": chat_id,
+      }));
 
     let response = self.request(builder).send().await?;
 
@@ -400,7 +538,8 @@ impl OpenWAClient {
 
     let response = self.request(builder).send().await?;
 
-    let messages: Vec<ChatHistoryMessageRecord> = Self::check(response).await?.json().await?;
+    let messages: Vec<ChatHistoryMessageRecord> =
+      Self::check(response).await?.json().await?;
 
     Ok(messages
       .into_iter()

@@ -12,6 +12,14 @@ pub async fn run(
   delete: bool,
   block: bool,
   unblock: bool,
+  archive: bool,
+  unarchive: bool,
+  pin: bool,
+  unpin: bool,
+  mute: bool,
+  unmute: bool,
+  mark_read: bool,
+  mark_unread: bool,
 ) -> Result<()> {
   let context = AppContext::load()?;
 
@@ -21,12 +29,23 @@ pub async fn run(
 
   let chat = resolver.resolve(&who).await?;
 
-  // `--block --unblock` deliberately cancels itself out.
+  // Opposing actions cancel each other out.
   let has_block_action = block ^ unblock;
+  let has_archive_action = archive ^ unarchive;
+  let has_pin_action = pin ^ unpin;
+  let has_mute_action = mute ^ unmute;
+  let has_read_action = mark_read ^ mark_unread;
 
-  // With no display mode and no effective management action,
-  // `wpp chat <contact>` behaves as the normal pager.
-  if !unread && !delete && !has_block_action {
+  let has_management_action = delete
+    || has_block_action
+    || has_archive_action
+    || has_pin_action
+    || has_mute_action
+    || has_read_action;
+
+  // With no display mode and no management action,
+  // `wpp chat <contact>` opens the normal pager.
+  if !unread && !has_management_action {
     let mut pager =
       MessagePager::new(&context.whatsapp, &session_id, &chat.id).await?;
 
@@ -35,7 +54,7 @@ pub async fn run(
     return Ok(());
   }
 
-  // `--unread` is a display mode. Any management action is executed
+  // `--unread` is a display mode. Management actions run
   // only after the pager has been closed.
   if unread {
     let mut pager = MessagePager::new_unread(
@@ -54,34 +73,70 @@ pub async fn run(
   if has_block_action {
     if block {
       service.block_chat(&chat).await?;
+
+      println!("Chat blocked: {}.", display_name(&chat));
     } else {
       service.unblock_chat(&chat).await?;
+
+      println!("Chat unblocked: {}.", display_name(&chat));
     }
+  }
 
-    let name = if chat.name.trim().is_empty() {
-      &chat.id
-    } else {
-      &chat.name
-    };
+  if has_archive_action {
+    service.archive_chat(&chat, archive).await?;
 
-    if block {
-      println!("Chat blocked: {name}.");
+    if archive {
+      println!("Chat archived: {}.", display_name(&chat));
     } else {
-      println!("Chat unblocked: {name}.");
+      println!("Chat unarchived: {}.", display_name(&chat));
+    }
+  }
+
+  if has_pin_action {
+    service.pin_chat(&chat, pin).await?;
+
+    if pin {
+      println!("Chat pinned: {}.", display_name(&chat));
+    } else {
+      println!("Chat unpinned: {}.", display_name(&chat));
+    }
+  }
+
+  if has_mute_action {
+    service.mute_chat(&chat, mute).await?;
+
+    if mute {
+      println!("Chat muted: {}.", display_name(&chat));
+    } else {
+      println!("Chat unmuted: {}.", display_name(&chat));
+    }
+  }
+
+  if has_read_action {
+    if mark_read {
+      service.mark_chat_read(&chat).await?;
+
+      println!("Chat marked as read: {}.", display_name(&chat));
+    } else {
+      service.mark_chat_unread(&chat).await?;
+
+      println!("Chat marked as unread: {}.", display_name(&chat));
     }
   }
 
   if delete {
     service.delete_chat(&chat.id).await?;
 
-    let name = if chat.name.trim().is_empty() {
-      &chat.id
-    } else {
-      &chat.name
-    };
-
-    println!("Chat deleted: {name}.");
+    println!("Chat deleted: {}.", display_name(&chat));
   }
 
   Ok(())
+}
+
+fn display_name<'a>(chat: &'a crate::whatsapp::models::Chat) -> &'a str {
+  if chat.name.trim().is_empty() {
+    &chat.id
+  } else {
+    &chat.name
+  }
 }
