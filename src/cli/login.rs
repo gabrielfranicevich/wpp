@@ -45,7 +45,9 @@ pub async fn run(phone: Option<String>, alias: Option<String>) -> Result<()> {
   // ── 1. Reuse an existing session when the phone is known ───
 
   let existing_session = match phone.as_deref() {
-    Some(phone_number) => find_reusable_session(&mut config, &client, phone_number).await?,
+    Some(phone_number) => {
+      find_reusable_session(&mut config, &client, phone_number).await?
+    }
 
     None => None,
   };
@@ -75,12 +77,15 @@ pub async fn run(phone: Option<String>, alias: Option<String>) -> Result<()> {
         Err(e) => {
           match &e {
             crate::error::WppError::Api { status: 401, .. } => {
-              eprintln!("{} OpenWA authentication failed (401)", "✗".red().bold());
+              eprintln!(
+                "{} OpenWA authentication failed (401)",
+                "✗".red().bold()
+              );
 
               eprintln!(
                 " {}",
                 "Set WPP_OPENWA_API_KEY or OPENWA_API_KEY \
-           (or place .api-key in openwa/data/)."
+           (or place .api-key in data/)."
                   .dark_grey()
               );
             }
@@ -94,8 +99,8 @@ pub async fn run(phone: Option<String>, alias: Option<String>) -> Result<()> {
 
               eprintln!(
                 " {}",
-                "Make sure OpenWA is running \
-           (e.g. `cd openwa && npm run dev`)"
+                "Make sure OpenWA is running and listening \
+           at the configured URL."
                   .dark_grey()
               );
             }
@@ -164,7 +169,10 @@ pub async fn run(phone: Option<String>, alias: Option<String>) -> Result<()> {
 
     println!();
 
-    println!(" {}", format_pairing_code(&pairing.code).green().bold());
+    println!(
+      " {}",
+      format_pairing_code(&pairing.code).green().bold()
+    );
 
     println!();
   } else {
@@ -201,7 +209,9 @@ pub async fn run(phone: Option<String>, alias: Option<String>) -> Result<()> {
 
     println!();
 
-    println!(" Scan this QR with WhatsApp → Linked Devices → Link a Device");
+    println!(
+      " Scan this QR with WhatsApp → Linked Devices → Link a Device"
+    );
 
     println!();
   }
@@ -228,14 +238,24 @@ pub async fn run(phone: Option<String>, alias: Option<String>) -> Result<()> {
             .or(s.phone.as_deref())
             .unwrap_or("WhatsApp");
 
-          println!(" {} Logged in as {}", "✓".green().bold(), who.bold());
+          println!(
+            " {} Logged in as {}",
+            "✓".green().bold(),
+            who.bold()
+          );
 
           if let Some(ref ph) = s.phone {
             println!(" Phone: {ph}");
           }
 
-          reconcile_authenticated_session(&mut config, &client, &s, alias, api_key)
-            .await?;
+          reconcile_authenticated_session(
+            &mut config,
+            &client,
+            &s,
+            alias,
+            api_key,
+          )
+          .await?;
 
           authenticated = true;
           break;
@@ -244,7 +264,10 @@ pub async fn run(phone: Option<String>, alias: Option<String>) -> Result<()> {
         "failed" => {
           eprintln!();
 
-          eprintln!(" {} Session failed to authenticate.", "✗".red().bold());
+          eprintln!(
+            " {} Session failed to authenticate.",
+            "✗".red().bold()
+          );
 
           break;
         }
@@ -332,7 +355,14 @@ async fn reconcile_authenticated_session(
   if duplicates.len() > 1 {
     let descriptions = duplicates
       .iter()
-      .map(|session| format!("{} ({}, {})", session.name, session.id, session.status))
+      .map(|session| {
+        format!(
+          "{} ({}, {})",
+          session.name,
+          session.id,
+          session.status
+        )
+      })
       .collect::<Vec<_>>()
       .join(", ");
 
@@ -349,9 +379,11 @@ async fn reconcile_authenticated_session(
     .next()
     .expect("duplicate list checked above");
 
-  let authenticated_aliases = aliases_for_session(config, &authenticated.id);
+  let authenticated_aliases =
+    aliases_for_session(config, &authenticated.id);
 
-  let duplicate_aliases = aliases_for_session(config, &duplicate.id);
+  let duplicate_aliases =
+    aliases_for_session(config, &duplicate.id);
 
   if duplicate.status == "ready" {
     /*
@@ -381,7 +413,9 @@ async fn reconcile_authenticated_session(
       .clone()
       .or_else(|| duplicate_aliases.first().cloned())
       .or_else(|| authenticated_aliases.first().cloned())
-      .unwrap_or_else(|| config.next_session_alias(duplicate.phone.as_deref()));
+      .unwrap_or_else(|| {
+        config.next_session_alias(duplicate.phone.as_deref())
+      });
 
     config.upsert_session(
       SessionEntry {
@@ -451,7 +485,9 @@ async fn reconcile_authenticated_session(
     .clone()
     .or_else(|| authenticated_aliases.first().cloned())
     .or_else(|| duplicate_aliases.first().cloned())
-    .unwrap_or_else(|| config.next_session_alias(authenticated.phone.as_deref()));
+    .unwrap_or_else(|| {
+      config.next_session_alias(authenticated.phone.as_deref())
+    });
 
   config.upsert_session(
     SessionEntry {
@@ -517,7 +553,9 @@ fn persist_authenticated_session(
     None => {
       if reused {
         existing_alias
-          .unwrap_or_else(|| config.next_session_alias(session.phone.as_deref()))
+          .unwrap_or_else(|| {
+            config.next_session_alias(session.phone.as_deref())
+          })
       } else {
         config.next_session_alias(session.phone.as_deref())
       }
@@ -574,7 +612,9 @@ fn activate_ready_session(
 
   let already_active = existing_alias
     .as_deref()
-    .is_some_and(|existing| config.active_session.as_deref() == Some(existing));
+    .is_some_and(|existing| {
+      config.active_session.as_deref() == Some(existing)
+    });
 
   // Same phone + same active session + no new alias:
   // there is nothing else to do.
@@ -598,7 +638,10 @@ fn activate_ready_session(
     Some(alias) => alias,
 
     None => {
-      existing_alias.unwrap_or_else(|| config.next_session_alias(session.phone.as_deref()))
+      existing_alias
+        .unwrap_or_else(|| {
+          config.next_session_alias(session.phone.as_deref())
+        })
     }
   };
 
@@ -626,7 +669,11 @@ fn activate_ready_session(
     .or(session.phone.as_deref())
     .unwrap_or("WhatsApp");
 
-  println!(" {} Reused session for {}", "✓".green().bold(), who.bold());
+  println!(
+    " {} Reused session for {}",
+    "✓".green().bold(),
+    who.bold()
+  );
 
   if let Some(ref phone) = session.phone {
     println!(" Phone: {phone}");
@@ -688,7 +735,9 @@ async fn find_reusable_session(
         .phone
         .as_deref()
         .map(normalize_phone)
-        .is_some_and(|session_phone| session_phone == normalized_phone)
+        .is_some_and(|session_phone| {
+          session_phone == normalized_phone
+        })
     })
     .collect();
 
@@ -700,7 +749,9 @@ async fn find_reusable_session(
     _ => {
       let descriptions = matches
         .iter()
-        .map(|session| format!("{} ({})", session.name, session.id))
+        .map(|session| {
+          format!("{} ({})", session.name, session.id)
+        })
         .collect::<Vec<_>>()
         .join(", ");
 
@@ -717,10 +768,17 @@ async fn find_reusable_session(
 ///
 /// Logout is best-effort because inactive sessions may reject it.
 /// The DELETE operation remains the authoritative cleanup step.
-async fn delete_remote_session(client: &WhatsAppClient, session: &Session) -> Result<()> {
+async fn delete_remote_session(
+  client: &WhatsAppClient,
+  session: &Session,
+) -> Result<()> {
   eprintln!(
     "{}",
-    format!(" Deleting duplicate session '{}'...", session.name).dark_grey()
+    format!(
+      " Deleting duplicate session '{}'...",
+      session.name
+    )
+    .dark_grey()
   );
 
   match client.logout(&session.id).await {
@@ -741,7 +799,10 @@ async fn delete_remote_session(client: &WhatsAppClient, session: &Session) -> Re
 }
 
 /// Return all aliases currently associated with an OpenWA session.
-fn aliases_for_session(config: &Config, session_id: &str) -> Vec<String> {
+fn aliases_for_session(
+  config: &Config,
+  session_id: &str,
+) -> Vec<String> {
   config
     .sessions
     .get(session_id)
@@ -754,7 +815,11 @@ fn aliases_for_session(config: &Config, session_id: &str) -> Vec<String> {
 ///
 /// If the alias belongs to another session, fail rather than
 /// silently reassigning it.
-fn add_alias_if_needed(config: &mut Config, session_id: &str, alias: String) -> Result<()> {
+fn add_alias_if_needed(
+  config: &mut Config,
+  session_id: &str,
+  alias: String,
+) -> Result<()> {
   if let Some((_, entry)) = config.find_session(&alias) {
     if entry.id == session_id {
       return Ok(());
@@ -774,7 +839,10 @@ fn add_alias_if_needed(config: &mut Config, session_id: &str, alias: String) -> 
 
 /// Return one existing alias for an OpenWA session, if wpp
 /// already knows that session.
-fn existing_alias(config: &Config, session_id: &str) -> Option<String> {
+fn existing_alias(
+  config: &Config,
+  session_id: &str,
+) -> Option<String> {
   config
     .sessions
     .get(session_id)

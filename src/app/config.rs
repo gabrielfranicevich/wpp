@@ -165,7 +165,7 @@ impl Config {
   /// 1. `WPP_OPENWA_API_KEY` environment variable
   /// 2. `OPENWA_API_KEY` environment variable
   /// 3. `api_key` in config file
-  /// 4. Auto-discovery from local OpenWA files (`openwa/data/.api-key`)
+  /// 4. Auto-discovery from local `.api-key` files
   pub fn openwa_api_key(&self) -> Option<String> {
     Self::resolve_api_key(self.api_key.as_deref())
   }
@@ -196,12 +196,9 @@ impl Config {
       }
     }
 
-    // Local development fallback: check for OpenWA bootstrap .api-key file
+    // Local development fallback: check for a local `.api-key` file.
     let mut candidates = vec![
-      PathBuf::from("openwa/data/.api-key"),
       PathBuf::from("data/.api-key"),
-      PathBuf::from("../openwa/data/.api-key"),
-      PathBuf::from("../../openwa/data/.api-key"),
     ];
 
     if let Ok(exe) = std::env::current_exe() {
@@ -210,8 +207,6 @@ impl Config {
         .and_then(|p| p.parent())
         .and_then(|p| p.parent())
       {
-        candidates.push(dir.join("openwa").join("data").join(".api-key"));
-
         candidates.push(dir.join("data").join(".api-key"));
       }
     }
@@ -237,7 +232,6 @@ impl Config {
 
     self.find_session(alias)
   }
-
 
   /// Find a session by alias or phone number.
   ///
@@ -321,7 +315,11 @@ impl Config {
   ///
   /// The alias is associated with the session instead of
   /// becoming the map key.
-  pub fn upsert_session(&mut self, session: SessionEntry, alias: String) -> anyhow::Result<()> {
+  pub fn upsert_session(
+    &mut self,
+    session: SessionEntry,
+    alias: String,
+  ) -> anyhow::Result<()> {
     if self.alias_exists(&alias) {
       let existing = self.find_by_alias(&alias);
 
@@ -418,7 +416,10 @@ impl Config {
   /// OpenWA session ID.
   ///
   /// Kept as a convenience for session deletion code.
-  pub fn remove_sessions_by_id(&mut self, session_id: &str) -> Vec<(String, SessionEntry)> {
+  pub fn remove_sessions_by_id(
+    &mut self,
+    session_id: &str,
+  ) -> Vec<(String, SessionEntry)> {
     let Some(entry) = self.remove_session_by_id(session_id) else {
       return Vec::new();
     };
@@ -620,7 +621,10 @@ mod tests {
   fn upsert_session_creates_one_session_with_alias() {
     let mut config = Config::default();
 
-    let result = config.upsert_session(session("session-id", &[]), "personal".to_string());
+    let result = config.upsert_session(
+      session("session-id", &[]),
+      "personal".to_string(),
+    );
 
     assert!(result.is_ok());
 
@@ -638,7 +642,10 @@ mod tests {
       session("session-id", &["personal"]),
     );
 
-    let result = config.upsert_session(session("session-id", &[]), "phone".to_string());
+    let result = config.upsert_session(
+      session("session-id", &[]),
+      "phone".to_string(),
+    );
 
     assert!(result.is_ok());
 
@@ -665,14 +672,23 @@ mod tests {
 
     updated.push_name = Some("Gabriel".to_string());
 
-    let result = config.upsert_session(updated, "personal".to_string());
+    let result = config.upsert_session(
+      updated,
+      "personal".to_string(),
+    );
 
     assert!(result.is_ok());
 
     let entry = &config.sessions["session-id"];
 
-    assert_eq!(entry.phone.as_deref(), Some("5493511234567"));
+    assert_eq!(
+      entry.phone.as_deref(),
+      Some("5493511234567")
+    );
 
-    assert_eq!(entry.push_name.as_deref(), Some("Gabriel"));
+    assert_eq!(
+      entry.push_name.as_deref(),
+      Some("Gabriel")
+    );
   }
 }
