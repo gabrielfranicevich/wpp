@@ -25,7 +25,7 @@ pub enum ChatListMode {
   Unread { limit: Option<usize> },
 }
 
-/// Application service for the chat list.
+/// Application service for the chat list and chat-level operations.
 ///
 /// It owns pagination and user-facing filtering so the CLI does not know
 /// anything about OpenWA's REST API or pagination semantics.
@@ -47,11 +47,11 @@ impl<'a> ChatsService<'a> {
   ///
   /// `Limit(n)` limits the input set before filtering:
   ///
-  ///  fetch n -> filter -> return
+  ///   fetch n -> filter -> return
   ///
   /// `Unread { limit }` limits the final result:
   ///
-  ///  fetch page -> filter unread -> accumulate -> next page
+  ///   fetch page -> filter unread -> accumulate -> next page
   ///
   /// `All` fetches every available chat before applying the optional filter.
   pub async fn list(
@@ -66,6 +66,11 @@ impl<'a> ChatsService<'a> {
 
       ChatListMode::Unread { limit } => self.list_unread(limit).await,
     }
+  }
+
+  /// Delete a chat from WhatsApp.
+  pub async fn delete_chat(&self, chat_id: &str) -> Result<(), WppError> {
+    self.whatsapp.delete_chat(self.session_id, chat_id).await
   }
 
   /// Search chats by partial name or phone number.

@@ -80,14 +80,22 @@ pub enum Command {
     filter: Option<ChatFilter>,
   },
 
-  /// Open a chat history
+  /// Open or manage a chat
   Chat {
     /// Contact name or phone number
     who: String,
 
     /// Show only unread messages (oldest first)
-    #[arg(long)]
+    #[arg(long, conflicts_with = "delete")]
     unread: bool,
+
+    /// Delete the chat
+    #[arg(
+      short = 'd',
+      long = "delete",
+      conflicts_with = "unread"
+    )]
+    delete: bool,
   },
 
   /// Send a text message

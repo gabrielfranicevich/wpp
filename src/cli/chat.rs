@@ -1,11 +1,16 @@
 use anyhow::Result;
 
 use crate::app::services::chat_resolver::ChatResolver;
+use crate::app::services::chats::ChatsService;
 use crate::app::services::messages::MessagePager;
 use crate::app::state::AppContext;
 use crate::terminal::pager::run as run_pager;
 
-pub async fn run(who: String, unread: bool) -> Result<()> {
+pub async fn run(
+  who: String,
+  unread: bool,
+  delete: bool,
+) -> Result<()> {
   let context = AppContext::load()?;
 
   let session_id = context.session.entry.id.clone();
@@ -13,6 +18,26 @@ pub async fn run(who: String, unread: bool) -> Result<()> {
   let resolver = ChatResolver::new(&context.whatsapp, &session_id);
 
   let chat = resolver.resolve(&who).await?;
+
+  if delete {
+    if unread {
+      anyhow::bail!("--delete and --unread cannot be used together");
+    }
+
+    let service = ChatsService::new(&context.whatsapp, &session_id);
+
+    service.delete_chat(&chat.id).await?;
+
+    let name = if chat.name.trim().is_empty() {
+      &chat.id
+    } else {
+      &chat.name
+    };
+
+    println!("Chat deleted: {name}.");
+
+    return Ok(());
+  }
 
   let mut pager = if unread {
     MessagePager::new_unread(

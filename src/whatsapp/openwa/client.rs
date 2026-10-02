@@ -217,21 +217,19 @@ impl OpenWAClient {
     Ok(chats.into_iter().map(Chat::from).collect())
   }
 
-  /// POST /api/sessions/:id/messages/send-text
+  /// POST /api/sessions/:id/chats/delete
   ///
-  /// Send a plain text message to a chat.
-  pub async fn send_text(
+  /// Delete a chat from the WhatsApp chat list.
+  pub async fn delete_chat(
     &self,
     session_id: &str,
     chat_id: &str,
-    text: &str,
   ) -> Result<(), WppError> {
     let builder = self
       .http
-      .post(self.url(&format!("/sessions/{session_id}/messages/send-text")))
+      .post(self.url(&format!("/sessions/{session_id}/chats/delete")))
       .json(&serde_json::json!({
         "chatId": chat_id,
-        "text": text,
       }));
 
     let response = self.request(builder).send().await?;
