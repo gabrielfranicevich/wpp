@@ -68,6 +68,12 @@ async fn run_loop(
               redraw = true;
             }
 
+            // Shift+Tab inserts a newline instead of sending.
+            KeyCode::BackTab => {
+              current_composer.insert('\n');
+              redraw = true;
+            }
+
             KeyCode::Enter => {
               let text = current_composer.text();
 
@@ -338,7 +344,7 @@ fn draw(
   }
 
   let footer = if composer.is_some() {
-    " Enter: send   Esc: cancel   ←→ / Home/End   Backspace/Delete "
+    " Enter: send   Shift+Tab: newline   Esc: cancel   ←→ / Home/End   Backspace/Delete "
   } else {
     " ↑↓ / j/k  PgUp/PgDn  Home/End  Ctrl+Space: message  q/Esc "
   };
@@ -451,7 +457,11 @@ fn draw_composer(
       line.push('▌');
     }
 
-    line.push(character);
+    if character == '\n' {
+      line.push('↵');
+    } else {
+      line.push(character);
+    }
   }
 
   if cursor_offset == visible.chars().count() {
@@ -851,7 +861,7 @@ fn fit_line(value: &str, width: usize) -> String {
   }
 
   if value_width < width {
-    return format!("{value}{}", " ".repeat(width - value_width,),);
+    return format!("{}{}", value, " ".repeat(width - value_width));
   }
 
   truncate_line(value, width)
@@ -961,5 +971,16 @@ mod tests {
     composer.insert('🙂');
 
     assert_eq!(composer.text(), "á🙂");
+  }
+
+  #[test]
+  fn composer_preserves_newlines() {
+    let mut composer = Composer::default();
+
+    composer.insert('a');
+    composer.insert('\n');
+    composer.insert('b');
+
+    assert_eq!(composer.text(), "a\nb");
   }
 }

@@ -97,6 +97,17 @@ impl WhatsAppClient {
     }
   }
 
+  pub async fn send_text(
+    &self,
+    session_id: &str,
+    chat_id: &str,
+    text: &str,
+  ) -> Result<(), WppError> {
+    match &self.backend {
+      Backend::OpenWA(client) => client.send_text(session_id, chat_id, text).await,
+    }
+  }
+
   pub async fn list_messages(
     &self,
     session_id: &str,
