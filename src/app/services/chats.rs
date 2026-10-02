@@ -42,88 +42,6 @@ impl<'a> ChatsService<'a> {
         }
     }
 
-    /// Resolve a chat by exact id, phone number, exact name,
-    /// or a unique partial name/phone match.
-    pub async fn resolve(&self, query: &str) -> Result<Chat, WppError> {
-        let query = query.trim();
-
-        if query.is_empty() {
-            return Err(WppError::Other(
-                "chat name or phone number cannot be empty".to_string(),
-            ));
-        }
-
-        let chats = self.list_all(None).await?;
-
-        // 1. Exact chat id.
-        if let Some(chat) = chats.iter().find(|chat| chat.id == query) {
-            return Ok((*chat).clone());
-        }
-
-        // 2. Exact phone number.
-        let normalized_query = normalize_phone(query);
-
-        if !normalized_query.is_empty() {
-            let phone_matches: Vec<&Chat> = chats
-                .iter()
-                .filter(|chat| normalize_phone(&chat.id) == normalized_query)
-                .collect();
-
-            match phone_matches.as_slice() {
-                [chat] => {
-                    return Ok((*chat).clone());
-                }
-
-                [] => {}
-
-                _ => {
-                    return Err(ambiguous_chat_error(query, &phone_matches));
-                }
-            }
-        }
-
-        // 3. Exact name, case-insensitive.
-        let query_lower = query.to_lowercase();
-
-        let name_matches: Vec<&Chat> = chats
-            .iter()
-            .filter(|chat| chat.name.to_lowercase() == query_lower)
-            .collect();
-
-        match name_matches.as_slice() {
-            [chat] => {
-                return Ok((*chat).clone());
-            }
-
-            [] => {}
-
-            _ => {
-                return Err(ambiguous_chat_error(query, &name_matches));
-            }
-        }
-
-        // 4. Unique partial name or phone match.
-        let partial_matches: Vec<&Chat> = chats
-            .iter()
-            .filter(|chat| {
-                let name_match = chat.name.to_lowercase().contains(&query_lower);
-
-                let phone_match = !normalized_query.is_empty()
-                    && normalize_phone(&chat.id).contains(&normalized_query);
-
-                name_match || phone_match
-            })
-            .collect();
-
-        match partial_matches.as_slice() {
-            [chat] => Ok((*chat).clone()),
-
-            [] => Err(WppError::Other(format!("chat `{query}` not found"))),
-
-            _ => Err(ambiguous_chat_error(query, &partial_matches)),
-        }
-    }
-
     /// Return chats according to the requested listing mode and optional
     /// post-selection filter.
     ///
@@ -175,7 +93,8 @@ impl<'a> ChatsService<'a> {
 
     async fn list_all(&self, filter: Option<ChatFilter>) -> Result<Vec<Chat>, WppError> {
         let mut chats = Vec::new();
-        let mut offset = 0;
+
+        let mut offset = 0usize;
 
         loop {
             let page = self
@@ -207,7 +126,8 @@ impl<'a> ChatsService<'a> {
         }
 
         let mut unread_chats = Vec::new();
-        let mut offset = 0;
+
+        let mut offset = 0usize;
 
         loop {
             let page = self
@@ -253,50 +173,5 @@ impl<'a> ChatsService<'a> {
 
             None => {}
         }
-    }
-}
-
-fn normalize_phone(value: &str) -> String {
-    value.chars().filter(|c| c.is_ascii_digit()).collect()
-}
-
-fn ambiguous_chat_error(query: &str, matches: &[&Chat]) -> WppError {
-    let candidates = matches
-        .iter()
-        .take(10)
-        .map(|chat| {
-            let name = if chat.name.trim().is_empty() {
-                &chat.id
-            } else {
-                &chat.name
-            };
-
-            format!("{name} ({})", chat.id)
-        })
-        .collect::<Vec<_>>()
-        .join(", ");
-
-    let suffix = if matches.len() > 10 { ", ..." } else { "" };
-
-    WppError::Other(format!("chat `{query}` is ambiguous: {candidates}{suffix}"))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::normalize_phone;
-
-    #[test]
-    fn normalize_phone_removes_formatting() {
-        assert_eq!(normalize_phone("+54 9 351 123-4567"), "5493511234567");
-    }
-
-    #[test]
-    fn normalize_phone_keeps_digits() {
-        assert_eq!(normalize_phone("5493511234567@c.us"), "5493511234567");
-    }
-
-    #[test]
-    fn normalize_phone_returns_empty_for_names() {
-        assert_eq!(normalize_phone("Gabriel"), "");
     }
 }
