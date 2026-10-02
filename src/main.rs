@@ -55,8 +55,17 @@ async fn main() -> anyhow::Result<()> {
       who,
       unread,
       delete,
+      block,
+      unblock,
     } => {
-      cli::chat::run(who, unread, delete).await?;
+      cli::chat::run(
+        who,
+        unread,
+        delete,
+        block,
+        unblock,
+      )
+      .await?;
     }
 
     cli::Command::Search { query } => {

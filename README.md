@@ -211,6 +211,52 @@ wpp chat Gabriel -d         # delete the chat
 
 Resolution supports exact identifiers and case-insensitive name matching.
 
+**Composable options:**
+
+Chat options are composable. --unread is a display mode, while management
+options perform actions on the resolved chat.
+
+```bash
+wpp chat <contact> --delete
+wpp chat <contact> --block
+wpp chat <contact> --unblock
+```
+
+**Display and management options can be combined:**
+
+```bash
+wpp chat Gabriel --unread --block
+```
+
+This shows the unread messages first.
+After the pager is closed, the contact is blocked.
+
+**Multiple management actions can also be combined:**
+
+```bash
+wpp chat Gabriel --delete --block
+```
+
+This blocks the contact and then deletes the chat.
+
+**Opposing actions cancel each other:**
+
+```bash
+wpp chat Gabriel --block --unblock
+```
+
+This is a no-op for the block/unblock actions.
+
+**Current management options:**
+
+```bash
+wpp chat <contact> --delete
+wpp chat <contact> --block
+wpp chat <contact> --unblock
+```
+
+Groups cannot be blocked or unblocked.
+
 **Planned:**
 
 compatible options should be stackable
@@ -270,9 +316,9 @@ wpp send Gabriel this works with multiple words too
 ## --caption <caption> is optional (photos or videos are sent as "document")
 wpp send <CONTACT> --file <path>
 ## --caption <caption>, --HD, --GIF are optional
-wpp send <CONTACT> --video <path> 
+wpp send <CONTACT> --video <path>
 ## --caption <caption>, --HD are optional
-wpp send <CONTACT> --photo <path> 
+wpp send <CONTACT> --photo <path>
 ## --animated (true|false) is optional, default is false
 wpp send <CONTACT> --sticker <path>
 ## --name <name> and --address <address> are optional
@@ -332,7 +378,7 @@ wpp sync --who "Gabriel,+549..."  # only sync specific contacts
 
 - The pager loads a recent window of messages on open
 - Scrolling up past the top triggers lazy loading of older messages
-- The viewport position is updated to stay anchored after loading
+- The viewport position is approximately preserved after loading older messages
 - `Home` loads the full available history
 
 ### Message composer
@@ -348,6 +394,7 @@ Press `Ctrl+Space` inside the pager to open the inline message composer.
 | `Backspace`       | Delete character before cursor|
 | `Delete`          | Delete character after cursor |
 | `Esc`             | Cancel and close composer     |
+| `Ctrl+C`          | Does not cancel the composer  |
 | `Shift+Enter`     | Insert new line               |
 
 ### Navigation controls
@@ -458,12 +505,17 @@ wpp/
 - Terminal resize handling
 - Inline message composer (`Ctrl+Space`)
 - Send message from composer (`Enter`)
+- Multiline message composition with (`Shift+Enter`)
+- `Ctrl+C` does not cancel the composer
 
 **Chat actions:**
 
 - View full chat history (`wpp chat <contact>`)
 - View only unread messages, oldest-first (`wpp chat <contact> --unread`)
 - Delete a chat (`wpp chat <contact> -d`)
+- Block a contact (`wpp chat <contact> --block`)
+- Unblock a contact (`wpp chat <contact> --unblock`)
+- Combine display and management options
 
 **Search:**
 
@@ -486,18 +538,16 @@ wpp/
 **Chat management:**
 
 ```bash
-wpp chat <contact> --block      # blocks a contact
-wpp chat <contact> --unblock    # unblocks a contact
-wpp chat <contact> --archive    # archives the chat
-wpp chat <contact> --unarchive  # unarchives the chat
-wpp chat <contact> --pin        # pins the chat
-wpp chat <contact> --unpin      # unpins the chat
-wpp chat <contact> --mute       # mutes the chat
-wpp chat <contact> --unmute     # unmutes the chat
-wpp chat <contact> --call       # calls a contact (audio call)
-wpp chat <contact> --video-call # calls a contact (video call)
-wpp chat <contact> --mark-read  # marks the chat as read
-wpp chat <contact> --mark-unread  # marks the chat as unread
+wpp chat <contact> --archive
+wpp chat <contact> --unarchive
+wpp chat <contact> --pin
+wpp chat <contact> --unpin
+wpp chat <contact> --mute
+wpp chat <contact> --unmute
+wpp chat <contact> --call
+wpp chat <contact> --video-call
+wpp chat <contact> --mark-read
+wpp chat <contact> --mark-unread
 ```
 
 **Pager:**

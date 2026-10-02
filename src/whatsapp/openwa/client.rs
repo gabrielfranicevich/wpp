@@ -239,6 +239,48 @@ impl OpenWAClient {
     Ok(())
   }
 
+  /// POST /api/sessions/:id/contacts/:contactId/block
+  ///
+  /// Block a contact.
+  pub async fn block_contact(
+    &self,
+    session_id: &str,
+    contact_id: &str,
+  ) -> Result<(), WppError> {
+    let builder = self
+      .http
+      .post(self.url(&format!(
+        "/sessions/{session_id}/contacts/{contact_id}/block"
+      )));
+
+    let response = self.request(builder).send().await?;
+
+    Self::check(response).await?;
+
+    Ok(())
+  }
+
+  /// DELETE /api/sessions/:id/contacts/:contactId/block
+  ///
+  /// Unblock a contact.
+  pub async fn unblock_contact(
+    &self,
+    session_id: &str,
+    contact_id: &str,
+  ) -> Result<(), WppError> {
+    let builder = self
+      .http
+      .delete(self.url(&format!(
+        "/sessions/{session_id}/contacts/{contact_id}/block"
+      )));
+
+    let response = self.request(builder).send().await?;
+
+    Self::check(response).await?;
+
+    Ok(())
+  }
+
   /// POST /api/sessions/:id/messages/send-text
   ///
   /// Send a plain text message to a chat.

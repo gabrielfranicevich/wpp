@@ -97,6 +97,26 @@ impl WhatsAppClient {
     }
   }
 
+  pub async fn block_contact(
+    &self,
+    session_id: &str,
+    contact_id: &str,
+  ) -> Result<(), WppError> {
+    match &self.backend {
+      Backend::OpenWA(client) => client.block_contact(session_id, contact_id).await,
+    }
+  }
+
+  pub async fn unblock_contact(
+    &self,
+    session_id: &str,
+    contact_id: &str,
+  ) -> Result<(), WppError> {
+    match &self.backend {
+      Backend::OpenWA(client) => client.unblock_contact(session_id, contact_id).await,
+    }
+  }
+
   pub async fn send_text(
     &self,
     session_id: &str,

@@ -73,6 +73,26 @@ impl<'a> ChatsService<'a> {
     self.whatsapp.delete_chat(self.session_id, chat_id).await
   }
 
+  /// Block a contact represented by a direct chat.
+  pub async fn block_chat(&self, chat: &Chat) -> Result<(), WppError> {
+    ensure_contact_chat(chat)?;
+
+    self
+      .whatsapp
+      .block_contact(self.session_id, &chat.id)
+      .await
+  }
+
+  /// Unblock a contact represented by a direct chat.
+  pub async fn unblock_chat(&self, chat: &Chat) -> Result<(), WppError> {
+    ensure_contact_chat(chat)?;
+
+    self
+      .whatsapp
+      .unblock_contact(self.session_id, &chat.id)
+      .await
+  }
+
   /// Search chats by partial name or phone number.
   ///
   /// Name matching is case-insensitive.
@@ -94,9 +114,11 @@ impl<'a> ChatsService<'a> {
 
     let mut chats = self.list_all(None).await?;
 
-    chats.retain(|chat| {
-      matches_search_query(chat, &query_lower, &normalized_phone)
-    });
+    chats.retain(|chat| matches_search_query(
+      chat,
+      &query_lower,
+      &normalized_phone,
+    ));
 
     Ok(chats)
   }
@@ -207,6 +229,17 @@ impl<'a> ChatsService<'a> {
       None => {}
     }
   }
+}
+
+fn ensure_contact_chat(chat: &Chat) -> Result<(), WppError> {
+  if chat.is_group {
+    return Err(WppError::Other(format!(
+      "cannot block or unblock group chat `{}`",
+      chat.name
+    )));
+  }
+
+  Ok(())
 }
 
 fn matches_search_query(

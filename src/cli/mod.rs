@@ -86,16 +86,20 @@ pub enum Command {
     who: String,
 
     /// Show only unread messages (oldest first)
-    #[arg(long, conflicts_with = "delete")]
+    #[arg(long)]
     unread: bool,
 
     /// Delete the chat
-    #[arg(
-      short = 'd',
-      long = "delete",
-      conflicts_with = "unread"
-    )]
+    #[arg(short = 'd', long = "delete")]
     delete: bool,
+
+    /// Block the contact
+    #[arg(long)]
+    block: bool,
+
+    /// Unblock the contact
+    #[arg(long)]
+    unblock: bool,
   },
 
   /// Send a text message
