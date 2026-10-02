@@ -168,29 +168,57 @@ async fn run_loop(
               scroll_top -= 1;
               redraw = true;
             } else if !pager.exhausted() {
-              // Measure the rendered height before loading older
-              // messages so the viewport can stay anchored.
-              let before_lines = render_messages(
+              let width = terminal::size()?.0.max(1) as usize;
+
+              // Preserve a semantic viewport anchor instead of relying
+              // only on the number of newly rendered lines. Loading older
+              // messages can change bubble grouping at the boundary, which
+              // means the visual line count is not a stable offset.
+              let before_content = render_messages(
                 chat,
                 pager.messages(),
-                terminal::size()?.0.max(1) as usize,
-              )
-              .len();
+                width,
+              );
+
+              let anchor = capture_viewport_anchor(
+                &before_content,
+                scroll_top,
+              );
 
               pager.load_older().await?;
 
-              let after_lines = render_messages(
+              let after_content = render_messages(
                 chat,
                 pager.messages(),
-                terminal::size()?.0.max(1) as usize,
-              )
-              .len();
+                width,
+              );
 
-              let added_lines = after_lines.saturating_sub(before_lines);
+              if let Some(anchor) = anchor {
+                if let Some(restored_scroll) =
+                  restore_viewport_anchor(&after_content, &anchor)
+                {
+                  scroll_top = restored_scroll;
+                  redraw = true;
+                } else {
+                  // The anchor disappeared unexpectedly. Fall back to
+                  // the previous line-count based behavior rather than
+                  // leaving the viewport untouched.
+                  let added_lines =
+                    after_content.len().saturating_sub(before_content.len());
 
-              if added_lines > 0 {
-                scroll_top = added_lines;
-                redraw = true;
+                  if added_lines > 0 {
+                    scroll_top = added_lines;
+                    redraw = true;
+                  }
+                }
+              } else {
+                let added_lines =
+                  after_content.len().saturating_sub(before_content.len());
+
+                if added_lines > 0 {
+                  scroll_top = added_lines;
+                  redraw = true;
+                }
               }
             }
           }
@@ -353,12 +381,56 @@ struct RenderedLine {
   alignment: Alignment,
   text: String,
   color: Option<Color>,
+
+  // Present only on the first body line of each message.
+  // This lets the pager preserve a semantic viewport anchor
+  // when older messages are loaded.
+  message_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy)]
 enum Alignment {
   Left,
   Right,
+}
+
+#[derive(Debug, Clone)]
+struct ViewportAnchor {
+  message_id: String,
+  screen_row: usize,
+}
+
+fn capture_viewport_anchor(
+  content: &[RenderedLine],
+  scroll_top: usize,
+) -> Option<ViewportAnchor> {
+  for (line_index, line) in content.iter().enumerate().skip(scroll_top) {
+    let Some(message_id) = line.message_id.as_ref() else {
+      continue;
+    };
+
+    return Some(ViewportAnchor {
+      message_id: message_id.clone(),
+      screen_row: line_index.saturating_sub(scroll_top),
+    });
+  }
+
+  None
+}
+
+fn restore_viewport_anchor(
+  content: &[RenderedLine],
+  anchor: &ViewportAnchor,
+) -> Option<usize> {
+  for (line_index, line) in content.iter().enumerate() {
+    if line.message_id.as_deref() != Some(anchor.message_id.as_str()) {
+      continue;
+    }
+
+    return Some(line_index.saturating_sub(anchor.screen_row));
+  }
+
+  None
 }
 
 #[derive(Debug, Default)]
@@ -470,7 +542,11 @@ fn draw_composer(
   Ok(())
 }
 
-fn render_messages(chat: &Chat, messages: &[Message], terminal_width: usize) -> Vec<RenderedLine> {
+fn render_messages(
+  chat: &Chat,
+  messages: &[Message],
+  terminal_width: usize,
+) -> Vec<RenderedLine> {
   let mut lines = Vec::new();
 
   let max_bubble_width =
@@ -614,12 +690,14 @@ fn render_group(
       alignment,
       text: top,
       color,
+      message_id: None,
     });
   } else {
     lines.push(RenderedLine {
       alignment,
       text: format!("╭{}╮", "─".repeat(inner_width,),),
       color: None,
+      message_id: None,
     });
   }
 
@@ -628,8 +706,12 @@ fn render_group(
   // A new `•` means a new WhatsApp message.
   // A line starting with two spaces is just
   // a continuation of that same message.
-  for message in messages_lines {
-    for (line_index, line) in message.into_iter().enumerate() {
+  for (message_index, message_lines) in messages_lines.into_iter().enumerate() {
+    let message_id = messages
+      .get(message_index)
+      .map(|message| message.id.clone());
+
+    for (line_index, line) in message_lines.into_iter().enumerate() {
       let prefix = if line_index == 0 { "• " } else { "  " };
 
       let text_width = line.chars().count();
@@ -644,6 +726,13 @@ fn render_group(
         alignment,
         text: rendered,
         color: None,
+
+        // Only the first body line needs an anchor.
+        message_id: if line_index == 0 {
+          message_id.clone()
+        } else {
+          None
+        },
       });
     }
   }
@@ -653,6 +742,7 @@ fn render_group(
     alignment,
     text: format!("╰{}╯", "─".repeat(inner_width,),),
     color: None,
+    message_id: None,
   });
 }
 
@@ -918,7 +1008,13 @@ impl Drop for TerminalGuard {
 
 #[cfg(test)]
 mod tests {
-  use super::Composer;
+  use super::{
+    capture_viewport_anchor,
+    restore_viewport_anchor,
+    Alignment,
+    Composer,
+    RenderedLine,
+  };
 
   #[test]
   fn composer_inserts_and_moves_cursor() {
@@ -974,5 +1070,74 @@ mod tests {
     composer.insert('b');
 
     assert_eq!(composer.text(), "a\nb");
+  }
+
+  fn line(message_id: Option<&str>) -> RenderedLine {
+    RenderedLine {
+      alignment: Alignment::Left,
+      text: String::new(),
+      color: None,
+      message_id: message_id.map(str::to_string),
+    }
+  }
+
+  #[test]
+  fn viewport_anchor_preserves_message_screen_row() {
+    let before = vec![
+      line(None),
+      line(Some("message-1")),
+      line(None),
+      line(Some("message-2")),
+    ];
+
+    let anchor = capture_viewport_anchor(&before, 0)
+      .expect("expected a viewport anchor");
+
+    assert_eq!(anchor.message_id, "message-1");
+    assert_eq!(anchor.screen_row, 1);
+
+    let after = vec![
+      line(None),
+      line(None),
+      line(None),
+      line(Some("message-1")),
+      line(None),
+      line(Some("message-2")),
+    ];
+
+    let restored = restore_viewport_anchor(&after, &anchor)
+      .expect("expected the anchor to be restored");
+
+    assert_eq!(restored, 2);
+    assert_eq!(restored + anchor.screen_row, 3);
+  }
+
+  #[test]
+  fn viewport_anchor_returns_none_when_no_messages_are_visible() {
+    let content = vec![
+      line(None),
+      line(None),
+      line(None),
+    ];
+
+    assert!(capture_viewport_anchor(&content, 0).is_none());
+  }
+
+  #[test]
+  fn viewport_anchor_returns_none_when_message_disappears() {
+    let before = vec![
+      line(None),
+      line(Some("message-1")),
+    ];
+
+    let anchor = capture_viewport_anchor(&before, 0)
+      .expect("expected a viewport anchor");
+
+    let after = vec![
+      line(None),
+      line(Some("message-2")),
+    ];
+
+    assert!(restore_viewport_anchor(&after, &anchor).is_none());
   }
 }
