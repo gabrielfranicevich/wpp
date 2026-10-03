@@ -1,3 +1,7 @@
 mod client;
 
-pub use client::NativeClient;
+pub use client::{
+  NativeAuthEvent,
+  NativeAuthMode,
+  NativeClient,
+};

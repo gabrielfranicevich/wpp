@@ -1,5 +1,13 @@
-use crate::app::config::{Config, SessionEntry};
+use crate::app::config::{
+  BackendKind,
+  Config,
+  SessionEntry,
+};
 use crate::whatsapp::client::WhatsAppClient;
+use crate::whatsapp::native::{
+  NativeAuthMode,
+  NativeClient,
+};
 
 /// The session selected by `wpp switch` or created by `wpp login`.
 #[derive(Debug, Clone)]
@@ -14,22 +22,47 @@ pub struct AppContext {
 }
 
 impl AppContext {
-  /// Load configuration and create a WhatsApp client bound to the active session.
-  pub fn load() -> anyhow::Result<Self> {
+  /// Load configuration and create a WhatsApp client bound
+  /// to the active session.
+  pub async fn load() -> anyhow::Result<Self> {
     let config = Config::load()?;
 
     let (_, entry) = config
       .active_entry()
-      .ok_or_else(|| anyhow::anyhow!("No active session. Run `wpp login` first."))?;
+      .ok_or_else(|| {
+        anyhow::anyhow!(
+          "No active session. Run `wpp login` first."
+        )
+      })?;
 
     let session = ActiveSession {
       entry: entry.clone(),
     };
 
-    let whatsapp = WhatsAppClient::openwa(
-      &config.base_url,
-      config.openwa_api_key(),
-    );
+    let whatsapp = match entry.backend {
+      BackendKind::OpenWA => {
+        WhatsAppClient::openwa(
+          &config.base_url,
+          config.openwa_api_key(),
+        )
+      }
+
+      BackendKind::Native => {
+        let path =
+          config.native_session_path(
+            &entry.id
+          )?;
+
+        let client =
+          NativeClient::open(
+            &path,
+            NativeAuthMode::None,
+          )
+          .await?;
+
+        WhatsAppClient::native(client)
+      }
+    };
 
     Ok(Self {
       session,

@@ -26,30 +26,42 @@ enum RealtimeBackend {
 }
 
 impl RealtimeListener {
-  pub fn try_recv(&mut self) -> Option<RealtimeEvent> {
+  pub fn try_recv(
+    &mut self,
+  ) -> Option<RealtimeEvent> {
     match &mut self.backend {
-      RealtimeBackend::OpenWA(listener) => listener.try_recv(),
+      RealtimeBackend::OpenWA(
+        listener
+      ) => listener.try_recv(),
     }
   }
 
-  pub async fn recv(&mut self) -> Option<RealtimeEvent> {
+  pub async fn recv(
+    &mut self,
+  ) -> Option<RealtimeEvent> {
     match &mut self.backend {
-      RealtimeBackend::OpenWA(listener) => listener.recv().await,
+      RealtimeBackend::OpenWA(
+        listener
+      ) => listener.recv().await,
     }
   }
 
-  pub async fn disconnect(self) -> Result<(), WppError> {
+  pub async fn disconnect(
+    self,
+  ) -> Result<(), WppError> {
     match self.backend {
-      RealtimeBackend::OpenWA(listener) => listener.disconnect().await,
+      RealtimeBackend::OpenWA(
+        listener
+      ) => listener.disconnect().await,
     }
   }
 }
 
 /// WhatsApp backend used by the application layer.
 ///
-/// The rest of wpp depends on this type instead of backend-specific clients.
-/// OpenWA remains the active backend for now while the native Rust backend is
-/// introduced incrementally.
+/// Native Rust is now available as a backend, while existing OpenWA
+/// sessions remain supported until the individual application operations
+/// are migrated.
 pub struct WhatsAppClient {
   backend: Backend,
 }
@@ -61,21 +73,28 @@ enum Backend {
 
 impl WhatsAppClient {
   /// Create a client backed by the existing OpenWA transport.
-  pub fn openwa(base_url: &str, api_key: Option<String>) -> Self {
+  pub fn openwa(
+    base_url: &str,
+    api_key: Option<String>,
+  ) -> Self {
     Self {
       backend: Backend::OpenWA(
-        OpenWAClient::new(base_url, api_key),
+        OpenWAClient::new(
+          base_url,
+          api_key,
+        ),
       ),
     }
   }
 
   /// Create a client backed by the native Rust transport.
-  ///
-  /// The native client is currently a foundation layer only. Individual
-  /// operations will be migrated from OpenWA to this backend incrementally.
-  pub fn native(client: NativeClient) -> Self {
+  pub fn native(
+    client: NativeClient,
+  ) -> Self {
     Self {
-      backend: Backend::Native(client),
+      backend: Backend::Native(
+        client
+      ),
     }
   }
 
@@ -89,7 +108,9 @@ impl WhatsAppClient {
       }
 
       Backend::Native(_) => {
-        native_not_implemented("create session")
+        native_not_implemented(
+          "create session"
+        )
       }
     }
   }
@@ -100,11 +121,15 @@ impl WhatsAppClient {
   ) -> Result<Session, WppError> {
     match &self.backend {
       Backend::OpenWA(client) => {
-        client.start_session(session_id).await
+        client
+          .start_session(session_id)
+          .await
       }
 
       Backend::Native(_) => {
-        native_not_implemented("start session")
+        native_not_implemented(
+          "start session"
+        )
       }
     }
   }
@@ -115,23 +140,31 @@ impl WhatsAppClient {
   ) -> Result<Session, WppError> {
     match &self.backend {
       Backend::OpenWA(client) => {
-        client.get_session(session_id).await
+        client
+          .get_session(session_id)
+          .await
       }
 
       Backend::Native(_) => {
-        native_not_implemented("get session")
+        native_not_implemented(
+          "get session"
+        )
       }
     }
   }
 
-  pub async fn list_sessions(&self) -> Result<Vec<Session>, WppError> {
+  pub async fn list_sessions(
+    &self,
+  ) -> Result<Vec<Session>, WppError> {
     match &self.backend {
       Backend::OpenWA(client) => {
         client.list_sessions().await
       }
 
       Backend::Native(_) => {
-        native_not_implemented("list sessions")
+        native_not_implemented(
+          "list sessions"
+        )
       }
     }
   }
@@ -142,11 +175,15 @@ impl WhatsAppClient {
   ) -> Result<(), WppError> {
     match &self.backend {
       Backend::OpenWA(client) => {
-        client.delete_session(session_id).await
+        client
+          .delete_session(session_id)
+          .await
       }
 
       Backend::Native(_) => {
-        native_not_implemented("delete session")
+        native_not_implemented(
+          "delete session"
+        )
       }
     }
   }
@@ -161,7 +198,9 @@ impl WhatsAppClient {
       }
 
       Backend::Native(_) => {
-        native_not_implemented("logout")
+        native_not_implemented(
+          "logout"
+        )
       }
     }
   }
@@ -176,7 +215,9 @@ impl WhatsAppClient {
       }
 
       Backend::Native(_) => {
-        native_not_implemented("get QR code")
+        native_not_implemented(
+          "get QR code"
+        )
       }
     }
   }
@@ -189,12 +230,17 @@ impl WhatsAppClient {
     match &self.backend {
       Backend::OpenWA(client) => {
         client
-          .request_pairing_code(session_id, phone)
+          .request_pairing_code(
+            session_id,
+            phone,
+          )
           .await
       }
 
       Backend::Native(_) => {
-        native_not_implemented("request pairing code")
+        native_not_implemented(
+          "request pairing code"
+        )
       }
     }
   }
@@ -208,12 +254,18 @@ impl WhatsAppClient {
     match &self.backend {
       Backend::OpenWA(client) => {
         client
-          .list_chats(session_id, limit, offset)
+          .list_chats(
+            session_id,
+            limit,
+            offset,
+          )
           .await
       }
 
       Backend::Native(_) => {
-        native_not_implemented("list chats")
+        native_not_implemented(
+          "list chats"
+        )
       }
     }
   }
@@ -225,11 +277,18 @@ impl WhatsAppClient {
   ) -> Result<(), WppError> {
     match &self.backend {
       Backend::OpenWA(client) => {
-        client.delete_chat(session_id, chat_id).await
+        client
+          .delete_chat(
+            session_id,
+            chat_id,
+          )
+          .await
       }
 
       Backend::Native(_) => {
-        native_not_implemented("delete chat")
+        native_not_implemented(
+          "delete chat"
+        )
       }
     }
   }
@@ -242,12 +301,17 @@ impl WhatsAppClient {
     match &self.backend {
       Backend::OpenWA(client) => {
         client
-          .block_contact(session_id, contact_id)
+          .block_contact(
+            session_id,
+            contact_id,
+          )
           .await
       }
 
       Backend::Native(_) => {
-        native_not_implemented("block contact")
+        native_not_implemented(
+          "block contact"
+        )
       }
     }
   }
@@ -260,12 +324,17 @@ impl WhatsAppClient {
     match &self.backend {
       Backend::OpenWA(client) => {
         client
-          .unblock_contact(session_id, contact_id)
+          .unblock_contact(
+            session_id,
+            contact_id,
+          )
           .await
       }
 
       Backend::Native(_) => {
-        native_not_implemented("unblock contact")
+        native_not_implemented(
+          "unblock contact"
+        )
       }
     }
   }
@@ -279,12 +348,18 @@ impl WhatsAppClient {
     match &self.backend {
       Backend::OpenWA(client) => {
         client
-          .archive_chat(session_id, chat_id, archive)
+          .archive_chat(
+            session_id,
+            chat_id,
+            archive,
+          )
           .await
       }
 
       Backend::Native(_) => {
-        native_not_implemented("archive chat")
+        native_not_implemented(
+          "archive chat"
+        )
       }
     }
   }
@@ -297,11 +372,19 @@ impl WhatsAppClient {
   ) -> Result<(), WppError> {
     match &self.backend {
       Backend::OpenWA(client) => {
-        client.pin_chat(session_id, chat_id, pin).await
+        client
+          .pin_chat(
+            session_id,
+            chat_id,
+            pin,
+          )
+          .await
       }
 
       Backend::Native(_) => {
-        native_not_implemented("pin chat")
+        native_not_implemented(
+          "pin chat"
+        )
       }
     }
   }
@@ -324,7 +407,9 @@ impl WhatsAppClient {
       }
 
       Backend::Native(_) => {
-        native_not_implemented("mute chat")
+        native_not_implemented(
+          "mute chat"
+        )
       }
     }
   }
@@ -347,7 +432,9 @@ impl WhatsAppClient {
       }
 
       Backend::Native(_) => {
-        native_not_implemented("mark chat as read")
+        native_not_implemented(
+          "mark chat as read"
+        )
       }
     }
   }
@@ -360,12 +447,17 @@ impl WhatsAppClient {
     match &self.backend {
       Backend::OpenWA(client) => {
         client
-          .mark_chat_unread(session_id, chat_id)
+          .mark_chat_unread(
+            session_id,
+            chat_id,
+          )
           .await
       }
 
       Backend::Native(_) => {
-        native_not_implemented("mark chat as unread")
+        native_not_implemented(
+          "mark chat as unread"
+        )
       }
     }
   }
@@ -379,12 +471,18 @@ impl WhatsAppClient {
     match &self.backend {
       Backend::OpenWA(client) => {
         client
-          .send_text(session_id, chat_id, text)
+          .send_text(
+            session_id,
+            chat_id,
+            text,
+          )
           .await
       }
 
       Backend::Native(_) => {
-        native_not_implemented("send text message")
+        native_not_implemented(
+          "send text message"
+        )
       }
     }
   }
@@ -409,7 +507,9 @@ impl WhatsAppClient {
       }
 
       Backend::Native(_) => {
-        native_not_implemented("list persisted messages")
+        native_not_implemented(
+          "list persisted messages"
+        )
       }
     }
   }
@@ -435,7 +535,9 @@ impl WhatsAppClient {
       }
 
       Backend::Native(_) => {
-        native_not_implemented("get chat history")
+        native_not_implemented(
+          "get chat history"
+        )
       }
     }
   }
@@ -448,14 +550,20 @@ impl WhatsAppClient {
     match &self.backend {
       Backend::OpenWA(client) => {
         Ok(RealtimeListener {
-          backend: RealtimeBackend::OpenWA(
-            client.listen(session_id).await?,
-          ),
+          backend:
+            RealtimeBackend::OpenWA(
+              client.listen(
+                session_id
+              )
+              .await?,
+            ),
         })
       }
 
       Backend::Native(_) => {
-        native_not_implemented("open realtime listener")
+        native_not_implemented(
+          "open realtime listener"
+        )
       }
     }
   }
