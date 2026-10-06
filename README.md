@@ -3,249 +3,423 @@
 > WhatsApp from the terminal — written in Rust.
 
 `wpp` is a lightweight terminal client for WhatsApp.
-No GUI, no browser, no Electron.
-It talks to WhatsApp through an external [OpenWA](https://github.com/rmyndharis/OpenWA)
-server (powered by Baileys) over REST and Socket.IO, while keeping the
-OpenWA transport isolated behind a backend-agnostic interface.
 
----
+No GUI, no browser, no Electron, and no external WhatsApp server are required.
+WhatsApp connectivity, authentication, protocol state, chat storage,
+and realtime events are handled directly by the native Rust client.
+
+* * *
+
+## ⚠️ Before connecting a phone number
+
+`wpp` depends on [**whatsapp-rust**](https://github.com/oxidezap/whatsapp-rust),
+which is an unofficial, community-maintained WhatsApp gateway.
+
+whatsapp-rust does **not* use Meta's official WhatsApp Cloud API.
+It connects to WhatsApp through a reverse-engineered client
+
+This introduces risks that are outside the control of `wpp`.
+
+### Account restriction and ban risk
+
+There is always a **non-zero risk of WhatsApp restricting or banning an account**
+connected through an unofficial client.
+
+No amount of code quality in `wpp` or whatsapp-rust can make that risk disappear.
+
+For that reason:
+
+* Do not connect your primary personal or business number
+  if losing it would be problematic.
+* Prefer a dedicated number that you can afford to lose.
+* Do not assume that using `wpp` makes automated messaging safe.
+
+* * *
 
 ## Quick start
 
-`wpp` requires a running OpenWA instance. OpenWA is a separate project and is
-not bundled with this repository.
+`wpp` is distributed as a single executable.
 
 ```bash
-# 1. Start OpenWA separately
-#    Default API: http://localhost:2785
+# Authenticate with QR code
+wpp login
 
-# 2. Log in
-wpp login          # scan a QR code in the terminal
-wpp login +549...  # or pair by phone number
+# Or use a phone pairing code
+wpp login +5491100000000
 
-# 3. Use it
-wpp list           # see your recent chats
-wpp chat Gabriel   # open a conversation
-wpp send Gabriel Hey!
+# List recent chats
+wpp list
+
+# Open a conversation
+wpp chat Gabriel
+
+# Send a message
+wpp send Gabriel "Hello from the terminal"
 ```
 
-The OpenWA URL can be changed in the `wpp` configuration file.
+Once authenticated, the native session is persisted locally and reused automatically.
 
----
-
-## Architecture
-
-```text
-┌─────────────────────┐
-│       WhatsApp      │
-└──────────┬──────────┘
-           │ Baileys
-┌──────────▼──────────┐
-│       OpenWA        │
-│   external server   │
-└──────────┬──────────┘
-           │ REST + Socket.IO
-┌──────────▼──────────┐
-│         wpp         │  ← this repository
-│        Rust         │
-│                     │
-│  CLI (clap)         │
-│  multi-session      │
-│  lazy pagination    │
-│  terminal pager     │
-│  local SQLite cache │
-└─────────────────────┘
-```
-
-`wpp` and `OpenWA` are separate processes.
-OpenWA must be running before any command that requires WhatsApp access.
-
-The internal layer stack is:
-
-```text
-CLI  →  Application services  →  WhatsApp abstraction  →  OpenWA  →  WhatsApp
-```
-
-The CLI has no knowledge of OpenWA-specific HTTP or Socket.IO details.
-Those live exclusively in the `whatsapp/openwa` transport layer.
-
----
+* * *
 
 ## Installation
 
-### Requirements
+### From source
 
-* **Rust** ≥ 1.78 (2021 edition)
-* A running **OpenWA** instance
-* Node.js or Docker if required by the OpenWA deployment
-
-### Build from source
+Clone the repository and build the release binary:
 
 ```bash
 git clone https://github.com/gabrielfranicevich/wpp.git
 cd wpp
 cargo build --release
-# binary: target/release/wpp
 ```
 
-OpenWA is installed and managed separately from `wpp`.
+The executable is generated at:
 
----
-
-## Configuration
-
-The config file is created automatically on first login.
-
-| Platform | Path                                            |
-| -------- | ----------------------------------------------- |
-| Linux    | `~/.config/wpp/config.toml`                     |
-| Windows  | `%APPDATA%\wpp\config.toml`                     |
-| macOS    | `~/Library/Application Support/wpp/config.toml` |
-
-**Example `config.toml`:**
-
-```toml
-base_url       = "http://localhost:2785"
-api_key        = "your-key"   # optional
-active_session = "personal"
+```text
+target/release/wpp
 ```
 
-**Environment variables** take precedence over the config file:
+It can be copied to any directory in `PATH`.
 
-| Variable             | Description         |
-| -------------------- | ------------------- |
-| `WPP_OPENWA_API_KEY` | OpenWA API key      |
-| `OPENWA_API_KEY`     | Alias for the above |
+### With Cargo
 
----
+```bash
+cargo install --path .
+```
+
+This installs the `wpp` executable into Cargo’s binary directory.
+
+### Runtime requirements
+
+No separate service is required.
+
+`wpp` does not require:
+
+* Node.js
+* Docker
+* a browser session
+* a locally running WhatsApp server
+* a REST API server
+* a Socket.IO server
+
+The executable connects directly to WhatsApp through the native Rust stack.
+
+* * *
+
+## Architecture
+
+The application is structured in layers:
+
+```text
+┌─────────────────────┐
+│       WhatsApp      │
+└──────────┬──────────┘
+           │
+┌──────────▼──────────┐
+│    whatsapp-rust    │
+│ native protocol     │
+│ authentication      │
+│ realtime events     │
+│ persistence         │
+└──────────┬──────────┘
+           │
+┌──────────▼──────────┐
+│    NativeClient     │
+│ native backend      │
+└──────────┬──────────┘
+           │
+┌──────────▼──────────┐
+│   WhatsAppClient    │
+│ application         │
+│ abstraction         │
+└──────────┬──────────┘
+           │
+┌──────────▼──────────┐
+│ Application services│
+│ chat / messages /   │
+│ sync / resolution   │
+└──────────┬──────────┘
+           │
+┌──────────▼──────────┐
+│         CLI         │
+│        clap         │
+└─────────────────────┘
+```
+
+The application layer depends on `WhatsAppClient`, not directly on `whatsapp-rust`.
+
+This keeps WhatsApp protocol details isolated from:
+
+* CLI commands
+* chat resolution
+* message services
+* local synchronization
+* terminal rendering
+
+Realtime events follow the same boundary:
+
+```text
+whatsapp-rust event
+        ↓
+NativeRealtimeListener
+        ↓
+RealtimeListener
+        ↓
+wpp listen / chat pager
+```
+
+* * *
+
+## Authentication
+
+`wpp login` supports both QR authentication and phone pairing.
+
+```bash
+wpp login
+wpp login --qr
+
+wpp login +5491100000000
+wpp login --phone +5491100000000
+
+wpp login +5491100000000 --alias personal
+```
+
+The phone number is normalized before session lookup.
+
+When a saved session already belongs to that number, `wpp` reuses its native storage
+instead of creating another session.
+
+Without an explicit alias, `wpp` generates one from the authenticated phone number.
+
+Multiple aliases can point to the same WhatsApp session.
+
+* * *
+
+## Storage
+
+`wpp` uses two separate SQLite databases.
+
+### Native WhatsApp storage
+
+Each WhatsApp session has its own native database:
+
+```text
+<data-local>/wpp/whatsapp/<session-id>.sqlite
+```
+
+This storage belongs to the native `whatsapp-rust` stack and contains authentication,
+protocol, and native chat state.
+
+### Local message cache
+
+`wpp sync` maintains a separate application-level cache:
+
+```text
+<data-local>/wpp/messages.sqlite
+```
+
+Messages are isolated by WhatsApp session, using `(session_id, message_id)` as the
+logical key.
+
+The two stores are intentionally independent:
+
+```text
+<data-local>/wpp/
+├── messages.sqlite
+└── whatsapp/
+    ├── <session-1>.sqlite
+    ├── <session-2>.sqlite
+    └── ...
+```
+
+### Configuration
+
+Session aliases and the active session are stored separately from both databases:
+
+```text
+<config-dir>/wpp/config.toml
+```
+
+Typical platform locations are:
+
+| Platform | Configuration | Native/application data |
+| --- | --- | --- |
+| Linux | `~/.config/wpp/config.toml` | `~/.local/share/wpp/` |
+| Windows | `%APPDATA%\wpp\config.toml` | `%LOCALAPPDATA%\wpp\` |
+| macOS | `~/Library/Application Support/wpp/config.toml` | `~/Library/Application Support/wpp/` |
+
+The configuration file contains session metadata such as aliases, phone numbers,
+profile names, and the active session.
+
+It does not contain a remote server URL or API credentials.
+
+* * *
+
+## Sessions
+
+### `wpp switch [TARGET]`
+
+List saved sessions or select the active one.
+
+```bash
+wpp switch
+wpp switch personal
+wpp switch +5491100000000
+```
+
+The selected session remains active across subsequent commands and program executions.
+
+### `wpp logout [TARGET]`
+
+Log out a saved session and remove its native storage.
+
+```bash
+wpp logout
+wpp logout personal
+wpp logout +5491100000000
+```
+
+All aliases associated with the session are removed.
+
+### `wpp session`
+
+Inspect or delete saved native sessions.
+
+```bash
+wpp session
+wpp session -D personal
+wpp session -D +5491100000000
+wpp session -D <session-id>
+```
+
+Deleting a session removes both its local metadata and native SQLite storage.
+
+* * *
 
 ## Commands
 
 ### `wpp login`
 
-Authenticate with WhatsApp.
-Sessions are saved locally and can be reused across runs.
+Authenticate a WhatsApp account.
 
 ```bash
-wpp login                                  # QR code (default)
-wpp login --qr                             # QR code (explicit)
-wpp login +5491100000000                   # phone pairing code
-wpp login +5491100000000 --alias personal  # phone pairing + alias
+wpp login
+wpp login --qr
+
+wpp login +5491100000000
+wpp login --phone +5491100000000
+
+wpp login +5491100000000 --alias personal
 ```
 
-* If the phone number already has a saved session, it is reused automatically.
-* After QR authentication, duplicate sessions for the same phone are
-  reconciled automatically.
-* Multiple aliases can be associated with a single session.
+QR authentication is the default when no phone number is provided.
 
----
+* * *
 
 ### `wpp logout [TARGET]`
 
-Log out a WhatsApp session through OpenWA and remove the local session entry.
-All aliases associated with the session are removed.
+Log out and remove a saved session.
 
 ```bash
-wpp logout           # log out the active session
-wpp logout personal  # log out a session by alias or phone number
+wpp logout
+wpp logout personal
 ```
 
----
+* * *
 
 ### `wpp switch [TARGET]`
 
-Manage the active session.
-The last used session is automatically restored on the next run.
+List sessions or change the active session.
 
 ```bash
-wpp switch           # list all saved sessions (with active indicator)
-wpp switch personal  # activate a session by alias
-wpp switch +549...   # activate a session by phone number
+wpp switch
+wpp switch personal
+wpp switch +5491100000000
 ```
 
----
+* * *
 
 ### `wpp session`
 
-Low-level OpenWA session management.
-Shows OpenWA session status and which ones are tracked locally by `wpp`.
+List saved sessions or delete one.
 
 ```bash
-wpp session          # list all OpenWA sessions
-wpp session -D <id>  # logout + delete a session
+wpp session
+wpp session -D <TARGET>
 ```
 
-`-D` also accepts a local alias or phone number.
-
-If the target refers to a local alias whose OpenWA session no longer exists,
-the stale local reference is removed.
-
----
+* * *
 
 ### `wpp list`
 
-List chats, most recent first. Default limit: 50.
+List chats, most recent first.
+
+The default limit is 50 chats.
 
 ```bash
-wpp list                  # recent chats (default: 50)
-wpp list --limit 20       # custom limit
-wpp list --all            # fetch all chats
-wpp list --unread         # fetch chats until unread chats are found
-wpp list --filter unread  # filter the selected set to unread chats
+wpp list
+wpp list --limit 20
+wpp list --all
+wpp list --unread
+wpp list --filter unread
 ```
 
-**Planned:**
+`--unread` selects unread chats while `--filter unread`
+filters the selected chat set.
 
-```bash
-wpp list --dm      # direct messages only
-wpp list --groups  # group chats only
-```
-
-Interactive chat selection is also planned.
-
----
+* * *
 
 ### `wpp chat <CONTACT/GROUP>`
 
-Open an interactive terminal pager for a conversation.
-The contact can be resolved by exact chat ID, phone number, or
-case-insensitive name.
+Open an interactive conversation pager.
+
+The target can be resolved by:
+
+* exact chat ID
+* phone number
+* case-insensitive name
+
+Examples:
 
 ```bash
 wpp chat Gabriel
 wpp chat 5493511234567
 wpp chat 107404297547868@lid
-
-wpp chat Gabriel --unread
-wpp chat Gabriel -d
 ```
 
-**Composable management options:**
+Unread mode:
+
+```bash
+wpp chat Gabriel --unread
+```
+
+Chat management actions:
 
 ```bash
 wpp chat <contact> --delete
 wpp chat <contact> --block
 wpp chat <contact> --unblock
+
 wpp chat <contact> --archive
 wpp chat <contact> --unarchive
+
 wpp chat <contact> --pin
 wpp chat <contact> --unpin
+
 wpp chat <contact> --mute
 wpp chat <contact> --unmute
+
 wpp chat <contact> --mark-read
 wpp chat <contact> --mark-unread
 ```
 
-Display and management options can be combined:
+Display and management actions can be combined:
 
 ```bash
 wpp chat Gabriel --unread --block
 ```
 
-This shows the unread messages first. After the pager is closed, the
-contact is blocked.
-
-Opposing actions cancel each other for each pair:
+Opposing operations cancel each other:
 
 ```bash
 wpp chat Gabriel --block --unblock
@@ -257,30 +431,17 @@ wpp chat Gabriel --mark-read --mark-unread
 
 Groups cannot be blocked or unblocked.
 
-The chat pager receives new incoming messages in real time through OpenWA
-`message.received` events.
+While the pager is open, new messages are received through the native realtime event
+stream.
 
-Audio and video calls are not exposed as outbound chat actions yet.
-
-**Planned:**
-
-```bash
-wpp chat <contact> --call
-wpp chat <contact> --video-call
-```
-
-Additional interactive chat features are planned, including message
-selection, message search, replies, calls, audio, multimedia, polls,
-locations, documents, stickers, and contacts.
-
----
+* * *
 
 ### `wpp search <QUERY>`
 
-Search chats by name or phone number without opening them.
+Search chats without opening them.
 
-Name matching is case-insensitive and phone matching ignores formatting.
-Partial matches are supported.
+Name searches are case-insensitive.
+Phone searches ignore formatting and support partial matches.
 
 ```bash
 wpp search gabriel
@@ -288,85 +449,71 @@ wpp search +549
 wpp search 351
 ```
 
-**Planned:** interactive selector inside `wpp search`.
-
----
+* * *
 
 ### `wpp send <CONTACT> <MESSAGE>`
 
 Send a text message.
-The contact is resolved the same way as with `wpp chat`.
 
 ```bash
 wpp send Gabriel hey
+
 wpp send +5491100000000 "how are you?"
-wpp send Gabriel this works with multiple words too
+
+wpp send Gabriel this message contains multiple words
 ```
 
-**Planned:**
+The contact resolver is shared with `wpp chat`.
 
-```bash
-## --caption <caption> is optional
-wpp send <CONTACT> --file <path>
-
-## --caption <caption>, --HD and --GIF are optional
-wpp send <CONTACT> --video <path>
-
-## --caption <caption> and --HD are optional
-wpp send <CONTACT> --photo <path>
-
-## --animated (true|false) is optional, default is false
-wpp send <CONTACT> --sticker <path>
-
-## --name <name> and --address <address> are optional
-wpp send <CONTACT> --location <latitude> <longitude>
-
-## --multiple (true|false) is optional, default is false
-wpp send <CONTACT> --poll <question> <option1> <option2> ...
-
-## --name <name> is optional, --vcard is optional
-wpp send <CONTACT> --contact <phone number>
-```
-
----
+* * *
 
 ### `wpp listen`
 
-Stay running and display incoming messages in real time.
+Listen for incoming messages in real time.
 
 ```bash
 wpp listen
 ```
 
-The listener subscribes to OpenWA `message.received` events for the active
-session.
+The command subscribes to the native WhatsApp event stream for the active session.
+
+Example output:
+
+```text
+Listening for incoming messages. Press Ctrl+C to stop.
+[2026-10-06T18:42:31Z] 5493511234567@c.us → 5493517654321@c.us: Hello
+```
 
 Press `Ctrl+C` to stop.
 
----
+* * *
 
 ### `wpp sync`
 
-Synchronize OpenWA message history into the local SQLite cache.
+Synchronize native message history into the local SQLite cache.
 
 ```bash
 wpp sync
 wpp sync --limit 100
-wpp sync --who "Gabriel,+549..."
+wpp sync --who "Gabriel,+5493511234567"
 ```
 
-* Without `--who`, all chats are synchronized.
+Behavior:
+
+* Without `--who`, all available chats are synchronized.
 * `--who` accepts a comma-separated list of exact chat names, phone numbers,
   or chat IDs.
 * `--limit` limits the number of messages synchronized per chat.
-* Synchronization is idempotent: running it again updates existing messages
-  instead of creating duplicates.
-* Messages are stored separately per WhatsApp session.
+* Synchronization is idempotent.
+* Messages are isolated by WhatsApp session.
 
-The local cache is stored in the platform's local application-data directory
-under `wpp/messages.sqlite`.
+The command writes to:
 
----
+```text
+<data-local>/wpp/messages.sqlite
+```
+
+* * *
 
 ## Chat pager
 
@@ -374,232 +521,218 @@ under `wpp/messages.sqlite`.
 
 ### Layout
 
-* Incoming messages → left-aligned
-* Outgoing messages → right-aligned
-* Consecutive messages from the same sender are visually grouped
-* Sender names are shown for incoming messages in group chats
-* Each sender gets a deterministic terminal colour
-* Long messages are wrapped to the terminal width
-* Embedded newlines remain distinguishable within the same message
-* The screen redraws only when something changes
-* Terminal resize is handled automatically
-* Incoming realtime messages appear while the pager is open
-* New messages automatically scroll into view when already at the bottom
+* Incoming messages are left-aligned.
+* Outgoing messages are right-aligned.
+* Consecutive messages from the same sender are visually grouped.
+* Sender names are displayed for incoming messages in group chats.
+* Each sender receives a deterministic terminal colour.
+* Long messages wrap to the terminal width.
+* Embedded newlines remain distinguishable.
+* Terminal resize is handled automatically.
+* Incoming realtime messages appear while the pager is open.
+* New messages automatically scroll into view when already at the bottom.
 
 ### History loading
 
-* The pager loads a recent window of messages on open
-* Scrolling up past the top triggers lazy loading of older messages
-* The first visible message remains at the same screen position after older
-  messages are loaded
-* `Home` loads all currently available history
+The pager initially loads a recent window.
+
+Scrolling above the loaded history triggers lazy loading of older messages.
+
+The current viewport position is preserved when older messages are inserted.
+
+`Home` loads all currently available history.
 
 ### Message composer
 
-Press `Ctrl+Space` inside the pager to open the inline message composer.
+Press `Ctrl+Space` inside the pager to open the inline composer.
 
-| Key            | Action                         |
-| -------------- | ------------------------------ |
-| `Ctrl+Space`   | Open composer                  |
-| `Enter`        | Send message and close         |
-| `←` / `→`      | Move cursor                    |
-| `Home` / `End` | Jump to start / end of input   |
-| `Backspace`    | Delete character before cursor |
-| `Delete`       | Delete character after cursor  |
-| `Esc`          | Cancel and close composer      |
-| `Ctrl+C`       | Does not cancel the composer   |
-| `Shift+Enter`  | Insert a new line              |
+| Key | Action |
+| --- | --- |
+| `Ctrl+Space` | Open composer |
+| `Enter` | Send message and close |
+| `←` / `→` | Move cursor |
+| `Home` / `End` | Jump to start / end |
+| `Backspace` | Delete previous character |
+| `Delete` | Delete next character |
+| `Esc` | Cancel and close |
+| `Ctrl+C` | Remains inside the composer |
+| `Shift+Enter` | Insert a new line |
 
-### Navigation controls
+### Navigation
 
-| Key         | Action                                   |
-| ----------- | ---------------------------------------- |
-| `↑` / `k`   | Scroll up one line / load older messages |
-| `↓` / `j`   | Scroll down one line                     |
-| `PageUp`    | Scroll one page up                       |
-| `PageDown`  | Scroll one page down                     |
-| `Home`      | Load all available older messages        |
-| `End`       | Jump to the newest loaded messages       |
-| `q` / `Esc` | Close the pager                          |
-| `Ctrl+C`    | Close the pager                          |
+| Key | Action |
+| --- | --- |
+| `↑` / `k` | Scroll up / load older messages |
+| `↓` / `j` | Scroll down |
+| `PageUp` | Scroll one page up |
+| `PageDown` | Scroll one page down |
+| `Home` | Load all available older messages |
+| `End` | Jump to newest loaded messages |
+| `q` / `Esc` | Close pager |
+| `Ctrl+C` | Close pager |
 
-### Pending pager improvements
-
-* Non-blocking `Home` for very large histories through incremental or
-  asynchronous loading
-
----
+* * *
 
 ## Project structure
 
 ```text
 wpp/
 ├── Cargo.toml
-├── src/
-│   ├── main.rs                   # Entry point + command dispatch
-│   ├── error.rs                  # Top-level error types
-│   │
-│   ├── cli/                      # Argument parsing (clap)
-│   │   ├── mod.rs                # Command definitions
-│   │   ├── login.rs              # QR + phone pairing flow
-│   │   ├── logout.rs             # Session logout
-│   │   ├── switch.rs             # Session switching + listing
-│   │   ├── session.rs            # OpenWA session management
-│   │   ├── list.rs               # Chat listing
-│   │   ├── chat.rs               # Chat history + management
-│   │   ├── search.rs             # Chat search
-│   │   ├── send.rs               # Message sending
-│   │   ├── listen.rs             # Realtime incoming messages
-│   │   └── sync.rs               # Local message synchronization
-│   │
-│   ├── app/                      # Application logic
-│   │   ├── config.rs             # TOML config + session store
-│   │   ├── state.rs              # Runtime context
-│   │   └── services/
-│   │       ├── chats.rs           # Chat listing, filtering, search, management
-│   │       ├── chat_resolver.rs   # Contact resolution
-│   │       ├── messages.rs        # Lazy history + message sending
-│   │       └── sync.rs            # Message synchronization service
-│   │
-│   ├── storage/                  # Local persistence
-│   │   ├── mod.rs
-│   │   └── sqlite.rs             # SQLite message cache
-│   │
-│   ├── whatsapp/                 # WhatsApp abstraction layer
-│   │   ├── client.rs             # Backend-agnostic WhatsAppClient
-│   │   ├── models.rs             # Domain models
-│   │   └── openwa/               # OpenWA transport
-│   │       ├── client.rs         # REST + Socket.IO client
-│   │       └── models.rs         # OpenWA DTOs
-│   │
-│   └── terminal/                # Terminal UI
-│       ├── pager.rs              # Interactive pager + composer
-│       └── render.rs             # Chat list and message rendering
+├── Cargo.lock
+├── LICENSE
+├── README.md
+└── src/
+    ├── main.rs
+    ├── error.rs
+    │
+    ├── cli/
+    │   ├── mod.rs
+    │   ├── login.rs
+    │   ├── logout.rs
+    │   ├── switch.rs
+    │   ├── session.rs
+    │   ├── list.rs
+    │   ├── chat.rs
+    │   ├── search.rs
+    │   ├── send.rs
+    │   ├── listen.rs
+    │   └── sync.rs
+    │
+    ├── app/
+    │   ├── config.rs
+    │   ├── state.rs
+    │   └── services/
+    │       ├── chats.rs
+    │       ├── chat_resolver.rs
+    │       ├── messages.rs
+    │       └── sync.rs
+    │
+    ├── storage/
+    │   ├── mod.rs
+    │   └── sqlite.rs
+    │
+    ├── terminal/
+    │   ├── mod.rs
+    │   ├── pager.rs
+    │   └── render.rs
+    │
+    └── whatsapp/
+        ├── mod.rs
+        ├── client.rs
+        ├── models.rs
+        └── native/
+            ├── mod.rs
+            └── client.rs
 ```
 
-OpenWA itself is external to this repository.
+The `whatsapp/native` module is the only WhatsApp transport implementation.
 
----
+* * *
 
 ## Development status
 
 ### Implemented
 
-**Session management:**
+**Authentication and sessions:**
 
-* QR code authentication rendered in the terminal
-* Phone number pairing code
+* QR authentication
+* Phone pairing code authentication
+* Persistent native WhatsApp sessions
+* Automatic session reuse by phone number
 * Session aliases
-* Multiple aliases per OpenWA session
-* Automatic session reuse when logging in with a known phone number
-* Automatic session reconciliation after duplicate QR logins
-* Session listing (`wpp switch`, `wpp session`)
-* Session switching with active indicator
+* Multiple aliases per session
+* Automatic alias generation
+* Active session selection
 * Session logout
-* OpenWA session deletion with stale-reference cleanup
+* Native session deletion
+* Native session storage cleanup
 
-**Chat listing:**
+**Chat listing and resolution:**
 
-* List recent chats, most recent first
+* Recent chat listing
 * Default limit of 50
-* Custom limit
-* Fetch all chats with internal pagination
-* List unread chats
-* Filter selected chats to unread only
-* Sorting by most recent timestamp
-
-**Chat resolution:**
-
+* Custom limits
+* Full chat listing
+* Unread chat selection
+* Unread filtering
+* Most-recent-first sorting
 * Exact chat ID resolution
-* Phone-number resolution with digit normalization
+* Exact phone-number resolution
 * Case-insensitive name resolution
+* Partial chat search
 * Ambiguous-match reporting
 
-**Chat pager:**
+**Chat management:**
 
-* Full-screen alternate terminal buffer
-* Incoming/outgoing alignment
-* Visual grouping of consecutive same-sender messages
-* Sender names in group chats
-* Deterministic sender colours
-* Long-message word wrapping
-* Lazy history loading
-* Full history loading with `Home`
-* Viewport position preservation after loading older messages
-* Terminal resize handling
-* Inline message composer
-* Text sending from the composer
-* Multiline message composition with `Shift+Enter`
-* `Ctrl+C` preserved inside the composer
-* Realtime incoming messages
-* Automatic scroll-to-bottom when already at the bottom
-
-**Chat actions:**
-
-* View chat history
-* Show unread history
 * Delete chats
 * Block and unblock contacts
 * Archive and unarchive chats
 * Pin and unpin chats
 * Mute and unmute chats
 * Mark chats as read or unread
-* Combine display and management options
-
-**Search:**
-
-* Partial name search
-* Partial phone-number search
-* Case-insensitive name matching
-* Digit-normalized phone matching
+* Combining display and management actions
 
 **Messaging:**
 
-* Send text messages from the command line
-* Send text messages from inside the pager
+* Command-line text sending
+* Text sending from the pager
+* Native message history
+* Native realtime incoming messages
 
 **Realtime:**
 
 * `wpp listen`
-* OpenWA `message.received` subscription
+* Native realtime event subscription
+* Conversion of native message events to the application `RealtimeEvent`
 * Realtime integration inside the chat pager
-* Non-blocking event handling while interacting with the pager
+* Non-blocking realtime handling while interacting with the pager
+* Duplicate event suppression in the pager
 
-**Local storage:**
+**Local synchronization:**
 
-* SQLite-backed message cache
+* Native message-history synchronization
+* SQLite-backed application cache
 * Idempotent message synchronization
-* Keyset pagination through the OpenWA persisted-message endpoint
+* Keyset pagination
 * Per-session message isolation
+
+**Terminal UI:**
+
+* Full-screen pager
+* Incoming/outgoing alignment
+* Sender grouping
+* Group-chat sender names
+* Deterministic sender colours
+* Long-message wrapping
+* Lazy history loading
+* Full-history loading
+* Viewport preservation
+* Terminal resize handling
+* Inline text composer
+* Multiline message composition
+* Realtime updates while browsing
 
 ### Pending
 
 **Chat listing:**
 
-* `wpp list --dm` — direct messages only
-* `wpp list --groups` — group chats only
-* Interactive chat selector in `wpp list`
-* Interactive chat selector in `wpp search`
+* `wpp list --dm`
+* `wpp list --groups`
+* Interactive chat selector
 
 **Pager:**
 
-* Non-blocking `Home` for very large histories
+* Non-blocking loading of very large histories
 
 **Messaging:**
 
 * File and media sending
+* Photos and videos
 * Stickers
 * Locations
 * Polls
 * Contacts
 * Rich message types
-
-**Calls:**
-
-```bash
-wpp call <CONTACT>
-wpp call <CONTACT> --video
-```
 
 **Chat interaction:**
 
@@ -608,42 +741,32 @@ wpp call <CONTACT> --video
 * Replies
 * Audio messages
 * Multimedia actions
-* Additional WhatsApp message types
 
----
+**Calls:**
 
-## Roadmap
-
-```text
-interactive chat selector
-        ↓
-wpp list --dm / --groups
-        ↓
-non-blocking large-history loading
-        ↓
-rich messaging + additional chat interactions
-        ↓
-native Rust WhatsApp backend
+```bash
+wpp call <CONTACT>
+wpp call <CONTACT> --video
 ```
 
-The OpenWA transport remains the current backend until the native Rust
-backend is implemented.
-
----
+* * *
 
 ## Design goals
 
-* Terminal-first, no GUI, no web framework.
-* Minimal RAM footprint.
-* Composable and scriptable CLI commands.
-* Clean separation between CLI, application logic, storage, and transport.
-* Backend-agnostic application architecture.
-* Lazy loading so large histories do not block the UI.
-* Local persistence for synchronized message history.
-* Keep OpenWA-specific details isolated from the rest of the application.
+* Terminal-first interface.
+* Single executable.
+* No external WhatsApp service.
+* Native Rust WhatsApp transport.
+* Clear separation between CLI, application logic, storage, and protocol code.
+* Application services independent from `whatsapp-rust`.
+* Persistent native session state.
+* Separate application-level message cache.
+* Lazy loading for large histories.
+* Composable and scriptable commands.
+* Minimal unnecessary runtime infrastructure.
 
----
+* * *
 
 ## License
 
-Not yet defined.
+MIT License.
