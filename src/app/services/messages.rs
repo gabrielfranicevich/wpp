@@ -24,9 +24,9 @@ pub async fn send_text(
 
 /// Lazy reader for live WhatsApp chat history.
 ///
-/// OpenWA's live history endpoint returns messages oldest -> newest
-/// and does not expose a keyset cursor. Therefore, older messages are
-/// loaded by requesting a progressively larger history window.
+/// The history backend returns messages oldest -> newest and does not expose
+/// a keyset cursor through the application abstraction. Therefore, older
+/// messages are loaded by requesting a progressively larger history window.
 ///
 /// Example:
 ///
@@ -75,8 +75,7 @@ impl<'a> MessagePager<'a> {
 
   /// Create a pager containing only the unread messages in a chat.
   ///
-  /// OpenWA exposes the unread count at the chat level, but the live
-  /// history endpoint does not mark individual messages as unread.
+  /// The history source does not mark individual messages as unread.
   /// We therefore fetch a recent window and take the last
   /// `unread_count` incoming messages.
   ///
@@ -126,9 +125,12 @@ impl<'a> MessagePager<'a> {
   /// Send a message from the currently open chat.
   ///
   /// The message is added optimistically to the normal history view after
-  /// OpenWA confirms the request. Unread-only views deliberately do not add
-  /// the outgoing message because it is not part of the unread history.
-  pub async fn send_text(&mut self, text: &str) -> Result<(), WppError> {
+  /// the backend confirms the request. Unread-only views deliberately do not
+  /// add the outgoing message because it is not part of the unread history.
+  pub async fn send_text(
+    &mut self,
+    text: &str,
+  ) -> Result<(), WppError> {
     send_text(
       self.whatsapp,
       self.session_id,
@@ -157,11 +159,13 @@ impl<'a> MessagePager<'a> {
 
   /// Load one additional window of older messages.
   ///
-  /// Because OpenWA's live history endpoint has no cursor, this
-  /// requests the existing messages plus one additional page.
+  /// Because history access here does not expose a cursor, this requests
+  /// the existing messages plus one additional page.
   ///
   /// Returns the number of newly loaded messages.
-  pub async fn load_older(&mut self) -> Result<usize, WppError> {
+  pub async fn load_older(
+    &mut self,
+  ) -> Result<usize, WppError> {
     if self.exhausted {
       return Ok(0);
     }
@@ -178,34 +182,51 @@ impl<'a> MessagePager<'a> {
 
     let messages = self
       .whatsapp
-      .get_chat_history(self.session_id, self.chat_id, requested_limit, true)
+      .get_chat_history(
+        self.session_id,
+        self.chat_id,
+        requested_limit,
+        true,
+      )
       .await?;
 
     let previous_len = self.messages.len();
 
     let new_len = messages.len();
 
-    // OpenWA returns history oldest -> newest.
+    // The history backend returns oldest -> newest.
     //
     // Replace the currently loaded window with the larger one.
     // The additional messages are therefore implicitly prepended.
     self.messages = messages;
 
-    self.loaded_limit = requested_limit.min(MAX_DEEP_HISTORY);
+    self.loaded_limit =
+      requested_limit.min(
+        MAX_DEEP_HISTORY
+      );
 
-    self.exhausted = new_len < requested_limit || requested_limit >= MAX_DEEP_HISTORY;
+    self.exhausted =
+      new_len < requested_limit
+        || requested_limit >= MAX_DEEP_HISTORY;
 
-    Ok(new_len.saturating_sub(previous_len))
+    Ok(
+      new_len.saturating_sub(
+        previous_len
+      )
+    )
   }
 
   /// Load all remaining available history.
   ///
   /// This is used by the `Home` key.
-  pub async fn load_all_older(&mut self) -> Result<usize, WppError> {
+  pub async fn load_all_older(
+    &mut self,
+  ) -> Result<usize, WppError> {
     let mut loaded = 0;
 
     while !self.exhausted {
-      let count = self.load_older().await?;
+      let count =
+        self.load_older().await?;
 
       if count == 0 {
         break;
@@ -223,7 +244,10 @@ impl<'a> MessagePager<'a> {
   /// Duplicate message ids are ignored as well.
   ///
   /// In unread-only mode only incoming messages are accepted.
-  pub fn push_realtime_message(&mut self, message: Message) -> bool {
+  pub fn push_realtime_message(
+    &mut self,
+    message: Message,
+  ) -> bool {
     if message.chat_id != self.chat_id {
       return false;
     }
@@ -237,7 +261,9 @@ impl<'a> MessagePager<'a> {
     if self
       .messages
       .iter()
-      .any(|existing| existing.id == message.id)
+      .any(|existing| {
+        existing.id == message.id
+      })
     {
       return false;
     }
@@ -247,30 +273,46 @@ impl<'a> MessagePager<'a> {
     true
   }
 
-  pub fn messages(&self) -> &[Message] {
+  pub fn messages(
+    &self,
+  ) -> &[Message] {
     &self.messages
   }
 
-  pub fn exhausted(&self) -> bool {
+  pub fn exhausted(
+    &self,
+  ) -> bool {
     self.exhausted
   }
 }
 
 /// Select the last `count` incoming messages while preserving
 /// their original chronological order.
-fn take_unread_messages(messages: &[Message], count: usize) -> Vec<Message> {
+fn take_unread_messages(
+  messages: &[Message],
+  count: usize,
+) -> Vec<Message> {
   if count == 0 {
     return Vec::new();
   }
 
-  let mut unread = Vec::with_capacity(count.min(messages.len()));
+  let mut unread =
+    Vec::with_capacity(
+      count.min(messages.len())
+    );
 
-  for message in messages.iter().rev() {
-    if message.direction != MessageDirection::Incoming {
+  for message in
+    messages.iter().rev()
+  {
+    if message.direction
+      != MessageDirection::Incoming
+    {
       continue;
     }
 
-    unread.push(message.clone());
+    unread.push(
+      message.clone()
+    );
 
     if unread.len() >= count {
       break;
@@ -285,15 +327,23 @@ fn take_unread_messages(messages: &[Message], count: usize) -> Vec<Message> {
 #[cfg(test)]
 mod tests {
   use super::take_unread_messages;
-  use crate::whatsapp::models::{Message, MessageDirection};
+  use crate::whatsapp::models::{
+    Message,
+    MessageDirection,
+  };
 
-  fn message(id: &str, direction: MessageDirection) -> Message {
+  fn message(
+    id: &str,
+    direction: MessageDirection,
+  ) -> Message {
     Message {
       id: id.to_string(),
       chat_id: "chat".to_string(),
       from: "from".to_string(),
       to: "to".to_string(),
-      body: Some(id.to_string()),
+      body: Some(
+        id.to_string()
+      ),
       kind: "text".to_string(),
       direction,
       author: None,
@@ -305,63 +355,134 @@ mod tests {
   #[test]
   fn selects_last_unread_messages_in_original_order() {
     let messages = vec![
-      message("1", MessageDirection::Incoming),
-      message("2", MessageDirection::Outgoing),
-      message("3", MessageDirection::Incoming),
-      message("4", MessageDirection::Incoming),
-      message("5", MessageDirection::Outgoing),
+      message(
+        "1",
+        MessageDirection::Incoming,
+      ),
+      message(
+        "2",
+        MessageDirection::Outgoing,
+      ),
+      message(
+        "3",
+        MessageDirection::Incoming,
+      ),
+      message(
+        "4",
+        MessageDirection::Incoming,
+      ),
+      message(
+        "5",
+        MessageDirection::Outgoing,
+      ),
     ];
 
-    let unread = take_unread_messages(&messages, 2);
+    let unread =
+      take_unread_messages(
+        &messages,
+        2,
+      );
 
     let ids = unread
       .iter()
-      .map(|message| message.id.as_str())
+      .map(|message| {
+        message.id.as_str()
+      })
       .collect::<Vec<_>>();
 
-    assert_eq!(ids, vec!["3", "4"]);
+    assert_eq!(
+      ids,
+      vec!["3", "4"]
+    );
   }
 
   #[test]
   fn ignores_outgoing_messages() {
     let messages = vec![
-      message("1", MessageDirection::Outgoing),
-      message("2", MessageDirection::Incoming),
-      message("3", MessageDirection::Outgoing),
+      message(
+        "1",
+        MessageDirection::Outgoing,
+      ),
+      message(
+        "2",
+        MessageDirection::Incoming,
+      ),
+      message(
+        "3",
+        MessageDirection::Outgoing,
+      ),
     ];
 
-    let unread = take_unread_messages(&messages, 1);
+    let unread =
+      take_unread_messages(
+        &messages,
+        1,
+      );
 
-    assert_eq!(unread.len(), 1);
-    assert_eq!(unread[0].id, "2");
+    assert_eq!(
+      unread.len(),
+      1
+    );
+
+    assert_eq!(
+      unread[0].id,
+      "2"
+    );
   }
 
   #[test]
   fn zero_count_returns_empty() {
     let messages = vec![
-      message("1", MessageDirection::Incoming),
-      message("2", MessageDirection::Incoming),
+      message(
+        "1",
+        MessageDirection::Incoming,
+      ),
+      message(
+        "2",
+        MessageDirection::Incoming,
+      ),
     ];
 
-    let unread = take_unread_messages(&messages, 0);
+    let unread =
+      take_unread_messages(
+        &messages,
+        0,
+      );
 
-    assert!(unread.is_empty());
+    assert!(
+      unread.is_empty()
+    );
   }
 
   #[test]
   fn returns_available_messages_when_history_is_shorter() {
     let messages = vec![
-      message("1", MessageDirection::Incoming),
-      message("2", MessageDirection::Incoming),
+      message(
+        "1",
+        MessageDirection::Incoming,
+      ),
+      message(
+        "2",
+        MessageDirection::Incoming,
+      ),
     ];
 
-    let unread = take_unread_messages(&messages, 10);
+    let unread =
+      take_unread_messages(
+        &messages,
+        10,
+      );
 
     let ids = unread
       .iter()
-      .map(|message| message.id.as_str())
+      .map(|message| {
+        message.id.as_str()
+      })
       .collect::<Vec<_>>();
 
-    assert_eq!(ids, vec!["1", "2"]);
+    assert_eq!(
+      ids,
+      vec!["1", "2"]
+    );
   }
 }

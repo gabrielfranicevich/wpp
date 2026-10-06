@@ -15,10 +15,16 @@ use whatsapp_rust_chat_store::{
   ChatCursor,
   ChatEntry,
   ChatStore,
+  MessageStatus,
+  StoredMessage,
 };
 
 use crate::error::WppError;
-use crate::whatsapp::models::Chat;
+use crate::whatsapp::models::{
+  Chat,
+  Message,
+  MessageDirection,
+};
 
 /// Authentication behavior requested when opening
 /// a native WhatsApp session.
@@ -394,6 +400,75 @@ impl NativeClient {
     )
   }
 
+  pub async fn get_chat_history(
+    &self,
+    chat_id: &str,
+    limit: usize,
+    deep: bool,
+  ) -> Result<Vec<Message>, WppError> {
+    let jid =
+      chat_id
+        .parse::<whatsapp_rust::Jid>()
+        .map_err(|error| {
+          WppError::Other(
+            format!(
+              "invalid native chat id `{chat_id}`: {error}"
+            ),
+          )
+        })?;
+
+    let max_limit =
+      if deep {
+        2000
+      } else {
+        100
+      };
+
+    let limit =
+      limit.clamp(
+        1,
+        max_limit,
+      );
+
+    let mut stored =
+      self
+        .chat_store
+        .messages(
+          &jid,
+          None,
+          limit as i64,
+        )
+        .await
+        .map_err(|error| {
+          WppError::Other(
+            format!(
+              "failed to get native chat history: {error}"
+            ),
+          )
+        })?;
+
+    stored.reverse();
+
+    let own_jid =
+      self
+        .client
+        .pn()
+        .map(|jid| jid.to_string())
+        .unwrap_or_default();
+
+    Ok(
+      stored
+        .into_iter()
+        .map(|message| {
+          message_from_stored(
+            message,
+            &own_jid,
+          )
+        })
+        .collect()
+    )
+  }
+
   /// List chats materialized by the native chat store.
   ///
   /// The application abstraction still exposes offset pagination, so this
@@ -509,6 +584,93 @@ impl NativeClient {
     drop(client);
 
     handle.shutdown().await;
+  }
+}
+
+fn message_from_stored(
+  stored: StoredMessage,
+  own_jid: &str,
+) -> Message {
+  let chat_id =
+    stored.chat_jid
+      .to_string();
+
+  let sender =
+    stored.sender_jid
+      .to_string();
+
+  let (
+    from,
+    to,
+    author,
+    direction,
+  ) =
+    if stored.from_me {
+      (
+        own_jid.to_string(),
+        chat_id.clone(),
+        None,
+        MessageDirection::Outgoing,
+      )
+    } else {
+      let author =
+        if stored.chat_jid.is_group() {
+          Some(sender.clone())
+        } else {
+          None
+        };
+
+      (
+        sender.clone(),
+        own_jid.to_string(),
+        author,
+        MessageDirection::Incoming,
+      )
+    };
+
+  Message {
+    id: stored.id,
+    chat_id,
+    from,
+    to,
+    body: stored.text,
+    kind: stored.kind
+      .as_str()
+      .to_string(),
+    direction,
+    author,
+    timestamp: Some(
+      stored.timestamp.timestamp()
+    ),
+    status:
+      message_status_as_str(
+        stored.status
+      )
+      .to_string(),
+  }
+}
+
+fn message_status_as_str(
+  status: MessageStatus,
+) -> &'static str {
+  match status {
+    MessageStatus::Error =>
+      "error",
+
+    MessageStatus::Pending =>
+      "pending",
+
+    MessageStatus::ServerAck =>
+      "server_ack",
+
+    MessageStatus::Delivered =>
+      "delivered",
+
+    MessageStatus::Read =>
+      "read",
+
+    MessageStatus::Played =>
+      "played",
   }
 }
 

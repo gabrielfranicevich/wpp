@@ -610,10 +610,14 @@ impl WhatsAppClient {
           .await
       }
 
-      Backend::Native(_) => {
-        native_not_implemented(
-          "get chat history"
-        )
+      Backend::Native(client) => {
+        client
+          .get_chat_history(
+            chat_id,
+            limit,
+            deep,
+          )
+          .await
       }
     }
   }
