@@ -17,6 +17,8 @@ use crate::whatsapp::openwa::client::{
   OpenWARealtimeListener,
 };
 
+const CHAT_LOOKUP_PAGE_SIZE: usize = 1000;
+
 /// Realtime listener exposed by the WhatsApp abstraction layer.
 ///
 /// Concrete transport details remain hidden inside the backend modules.
@@ -168,7 +170,9 @@ impl WhatsAppClient {
   ) -> Result<Session, WppError> {
     match &self.backend {
       Backend::OpenWA(client) => {
-        client.logout(session_id).await
+        client
+          .logout(session_id)
+          .await
       }
 
       Backend::Native(client) => {
@@ -179,19 +183,137 @@ impl WhatsAppClient {
 
         Ok(Session {
           id: session_id.to_string(),
-          name: if push_name.trim().is_empty() {
-            session_id.to_string()
-          } else {
-            push_name.clone()
-          },
-          status: "logged_out".to_string(),
-          phone: client.phone(),
-          push_name: if push_name.trim().is_empty() {
-            None
-          } else {
-            Some(push_name)
-          },
+          name:
+            if push_name
+              .trim()
+              .is_empty()
+            {
+              session_id.to_string()
+            } else {
+              push_name.clone()
+            },
+          status:
+            "logged_out".to_string(),
+          phone:
+            client.phone(),
+          push_name:
+            if push_name
+              .trim()
+              .is_empty()
+            {
+              None
+            } else {
+              Some(push_name)
+            },
         })
+      }
+    }
+  }
+
+  pub async fn get_chat_by_id(
+    &self,
+    session_id: &str,
+    chat_id: &str,
+  ) -> Result<Option<Chat>, WppError> {
+    match &self.backend {
+      Backend::OpenWA(client) => {
+        if !chat_id.contains('@') {
+          return Ok(None);
+        }
+
+        let mut offset =
+          0usize;
+
+        loop {
+          let chats =
+            client
+              .list_chats(
+                session_id,
+                CHAT_LOOKUP_PAGE_SIZE,
+                offset,
+              )
+              .await?;
+
+          if chats.is_empty() {
+            return Ok(None);
+          }
+
+          if let Some(chat) =
+            chats
+              .into_iter()
+              .find(|chat| {
+                chat.id == chat_id
+              })
+          {
+            return Ok(Some(chat));
+          }
+
+          let page_len =
+            CHAT_LOOKUP_PAGE_SIZE;
+
+          offset +=
+            page_len;
+        }
+      }
+
+      Backend::Native(client) => {
+        client
+          .get_chat(chat_id)
+          .await
+      }
+    }
+  }
+
+  pub async fn find_chats_by_phone(
+    &self,
+    session_id: &str,
+    phone: &str,
+  ) -> Result<Vec<Chat>, WppError> {
+    match &self.backend {
+      Backend::OpenWA(client) => {
+        let mut matches =
+          Vec::new();
+
+        let mut offset =
+          0usize;
+
+        loop {
+          let chats =
+            client
+              .list_chats(
+                session_id,
+                CHAT_LOOKUP_PAGE_SIZE,
+                offset,
+              )
+              .await?;
+
+          let page_len =
+            chats.len();
+
+          for chat in chats {
+            if normalize_phone(&chat.id)
+              == normalize_phone(phone)
+            {
+              matches.push(chat);
+            }
+          }
+
+          if page_len
+            < CHAT_LOOKUP_PAGE_SIZE
+          {
+            break;
+          }
+
+          offset += page_len;
+        }
+
+        Ok(matches)
+      }
+
+      Backend::Native(client) => {
+        client
+          .find_chats_by_phone(phone)
+          .await
       }
     }
   }
@@ -506,10 +628,9 @@ impl WhatsAppClient {
         Ok(RealtimeListener {
           backend:
             RealtimeBackend::OpenWA(
-              client.listen(
-                session_id
-              )
-              .await?,
+              client
+                .listen(session_id)
+                .await?,
             ),
         })
       }
@@ -523,11 +644,22 @@ impl WhatsAppClient {
   }
 }
 
+fn normalize_phone(
+  value: &str,
+) -> String {
+  value
+    .chars()
+    .filter(|c| c.is_ascii_digit())
+    .collect()
+}
+
 /// Return a consistent error until a native backend operation is migrated.
 fn native_not_implemented<T>(
   operation: &str,
 ) -> Result<T, WppError> {
-  Err(WppError::Other(format!(
-    "native backend does not implement {operation} yet"
-  )))
+  Err(WppError::Other(
+    format!(
+      "native backend does not implement {operation} yet"
+    )
+  ))
 }

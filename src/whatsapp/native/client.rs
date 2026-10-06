@@ -248,7 +248,9 @@ impl NativeClient {
   }
 
   /// Return whether whatsapp-rust considers this session authenticated.
-  pub fn is_logged_in(&self) -> bool {
+  pub fn is_logged_in(
+    &self,
+  ) -> bool {
     self.client.is_logged_in()
   }
 
@@ -279,7 +281,9 @@ impl NativeClient {
   }
 
   /// Return the authenticated phone number, when available.
-  pub fn phone(&self) -> Option<String> {
+  pub fn phone(
+    &self,
+  ) -> Option<String> {
     let jid =
       self.client.pn()?;
 
@@ -310,13 +314,84 @@ impl NativeClient {
   }
 
   /// Return this device's WhatsApp push name.
-  pub fn push_name(&self) -> String {
+  pub fn push_name(
+    &self,
+  ) -> String {
     self.client.push_name()
   }
 
   /// Log out the native WhatsApp device.
-  pub async fn logout(&self) {
+  pub async fn logout(
+    &self,
+  ) {
     self.client.logout().await;
+  }
+
+  /// Find a native chat by its exact JID.
+  pub async fn get_chat(
+    &self,
+    chat_id: &str,
+  ) -> Result<Option<Chat>, WppError> {
+    let Ok(jid) =
+      chat_id.parse::<whatsapp_rust::Jid>()
+    else {
+      return Ok(None);
+    };
+
+    let entry =
+      self
+        .chat_store
+        .chat(&jid)
+        .await
+        .map_err(|error| {
+          WppError::Other(
+            format!(
+              "failed to find native chat: {error}"
+            ),
+          )
+        })?;
+
+    Ok(
+      entry.map(chat_from_entry)
+    )
+  }
+
+  /// Find native chats for an exact phone number.
+  pub async fn find_chats_by_phone(
+    &self,
+    phone: &str,
+  ) -> Result<Vec<Chat>, WppError> {
+    let normalized =
+      normalize_phone(phone);
+
+    if normalized.is_empty() {
+      return Ok(Vec::new());
+    }
+
+    let jid =
+      whatsapp_rust::Jid::pn(
+        normalized
+      );
+
+    let entry =
+      self
+        .chat_store
+        .chat(&jid)
+        .await
+        .map_err(|error| {
+          WppError::Other(
+            format!(
+              "failed to find native chat by phone: {error}"
+            ),
+          )
+        })?;
+
+    Ok(
+      entry
+        .into_iter()
+        .map(chat_from_entry)
+        .collect()
+    )
   }
 
   /// List chats materialized by the native chat store.
@@ -419,7 +494,9 @@ impl NativeClient {
   }
 
   /// Gracefully stop the background bot and flush native state.
-  pub async fn shutdown(self) {
+  pub async fn shutdown(
+    self,
+  ) {
     let NativeClient {
       handle,
       chat_store_subscription,
