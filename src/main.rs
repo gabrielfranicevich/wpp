@@ -69,18 +69,20 @@ async fn main() -> anyhow::Result<()> {
     } => {
       cli::chat::run(
         who,
-        unread,
-        delete,
-        block,
-        unblock,
-        archive,
-        unarchive,
-        pin,
-        unpin,
-        mute,
-        unmute,
-        mark_read,
-        mark_unread,
+        cli::chat::ChatOptions {
+          unread,
+          delete,
+          block,
+          unblock,
+          archive,
+          unarchive,
+          pin,
+          unpin,
+          mute,
+          unmute,
+          mark_read,
+          mark_unread,
+        },
       )
       .await?;
     }

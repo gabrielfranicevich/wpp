@@ -7,21 +7,37 @@ use crate::app::state::AppContext;
 use crate::terminal::pager::run_with_listener;
 use crate::whatsapp::models::Chat;
 
-pub async fn run(
-  who: String,
-  unread: bool,
-  delete: bool,
-  block: bool,
-  unblock: bool,
-  archive: bool,
-  unarchive: bool,
-  pin: bool,
-  unpin: bool,
-  mute: bool,
-  unmute: bool,
-  mark_read: bool,
-  mark_unread: bool,
-) -> Result<()> {
+pub struct ChatOptions {
+  pub unread: bool,
+  pub delete: bool,
+  pub block: bool,
+  pub unblock: bool,
+  pub archive: bool,
+  pub unarchive: bool,
+  pub pin: bool,
+  pub unpin: bool,
+  pub mute: bool,
+  pub unmute: bool,
+  pub mark_read: bool,
+  pub mark_unread: bool,
+}
+
+pub async fn run(who: String, options: ChatOptions) -> Result<()> {
+  let ChatOptions {
+    unread,
+    delete,
+    block,
+    unblock,
+    archive,
+    unarchive,
+    pin,
+    unpin,
+    mute,
+    unmute,
+    mark_read,
+    mark_unread,
+  } = options;
+
   let context = AppContext::load().await?;
 
   let session_id = context.session.entry.id.clone();
@@ -149,7 +165,7 @@ async fn open_realtime_chat(
   Ok(())
 }
 
-fn display_name<'a>(chat: &'a Chat) -> &'a str {
+fn display_name(chat: &Chat) -> &str {
   if chat.name.trim().is_empty() {
     &chat.id
   } else {

@@ -109,7 +109,7 @@ async fn delete_native_session(config: &mut Config, entry: &SessionEntry) -> Res
   if removed.is_empty() {
     println!(
       " {} No local wpp aliases were associated with this session.",
-      "i".dark_grey().to_string()
+      "i".dark_grey()
     );
   } else {
     let aliases = removed

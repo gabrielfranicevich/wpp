@@ -1,3 +1,5 @@
+use std::cmp::Reverse;
+
 use crate::error::WppError;
 use crate::whatsapp::client::WhatsAppClient;
 use crate::whatsapp::models::{Chat, MessageDirection};
@@ -218,7 +220,7 @@ impl<'a> ChatsService<'a> {
       .list_chats(self.session_id, fetch_limit, 0)
       .await?;
 
-    chats.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    chats.sort_by_key(|chat| Reverse(chat.timestamp));
 
     Self::apply_filter(&mut chats, filter);
 
@@ -247,7 +249,7 @@ impl<'a> ChatsService<'a> {
       offset += page_len;
     }
 
-    chats.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    chats.sort_by_key(|chat| Reverse(chat.timestamp));
 
     Self::apply_filter(&mut chats, filter);
 
@@ -279,7 +281,7 @@ impl<'a> ChatsService<'a> {
             if unread_chats.len() >= limit {
               unread_chats.truncate(limit);
 
-              unread_chats.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+              unread_chats.sort_by_key(|chat| Reverse(chat.timestamp));
 
               return Ok(unread_chats);
             }
@@ -294,7 +296,7 @@ impl<'a> ChatsService<'a> {
       offset += page_len;
     }
 
-    unread_chats.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    unread_chats.sort_by_key(|chat| Reverse(chat.timestamp));
 
     Ok(unread_chats)
   }

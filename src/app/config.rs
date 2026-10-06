@@ -25,7 +25,7 @@ pub struct SessionEntry {
 
 /// Persistent config stored in ~/.config/wpp/config.toml
 /// (or platform equivalent).
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Default)]
 pub struct Config {
   /// Alias of the last-used session.
   #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -34,15 +34,6 @@ pub struct Config {
   /// All saved sessions keyed by session ID.
   #[serde(default)]
   pub sessions: HashMap<String, SessionEntry>,
-}
-
-impl Default for Config {
-  fn default() -> Self {
-    Self {
-      active_session: None,
-      sessions: HashMap::new(),
-    }
-  }
 }
 
 impl Config {

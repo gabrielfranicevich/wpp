@@ -100,7 +100,7 @@ async fn select_chats(
   Ok(chats)
 }
 
-fn display_name<'a>(chat: &'a Chat) -> &'a str {
+fn display_name(chat: &Chat) -> &str {
   if chat.name.trim().is_empty() {
     &chat.id
   } else {

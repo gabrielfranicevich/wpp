@@ -278,11 +278,9 @@ async fn run_loop(
             redraw = true;
           }
 
-          KeyCode::End => {
-            if scroll_top != max_scroll {
-              scroll_top = max_scroll;
-              redraw = true;
-            }
+          KeyCode::End if scroll_top != max_scroll => {
+            scroll_top = max_scroll;
+            redraw = true;
           }
 
           _ => {}
@@ -497,11 +495,7 @@ fn draw_composer(
 
   let cursor = composer.cursor;
 
-  let start = if cursor > available {
-    cursor - available
-  } else {
-    0
-  };
+  let start = cursor.saturating_sub(available);
 
   let end = (start + available).min(composer.chars.len());
 
@@ -874,7 +868,6 @@ fn message_body(message: &Message) -> String {
     .as_deref()
     .unwrap_or("")
     .replace('\r', "")
-    .replace('\n', "\n")
     .replace('\t', "  ");
 
   let body = body.trim();
