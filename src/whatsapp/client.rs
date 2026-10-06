@@ -555,10 +555,13 @@ impl WhatsAppClient {
           .await
       }
 
-      Backend::Native(_) => {
-        native_not_implemented(
-          "send text message"
-        )
+      Backend::Native(client) => {
+        client
+          .send_text(
+            chat_id,
+            text,
+          )
+          .await
       }
     }
   }

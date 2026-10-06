@@ -8,6 +8,7 @@ use whatsapp_rust::bot::{
   BotHandle,
 };
 use whatsapp_rust::pair_code::PairCodeOptions;
+use whatsapp_rust::proto_helpers::MessageBuilderExt;
 use whatsapp_rust::store::SqliteStore;
 use whatsapp_rust::wacore::types::events::Subscription;
 use whatsapp_rust::wacore_binary::JidExt;
@@ -467,6 +468,74 @@ impl NativeClient {
         })
         .collect()
     )
+  }
+
+  pub async fn send_text(
+    &self,
+    chat_id: &str,
+    text: &str,
+  ) -> Result<(), WppError> {
+    let jid =
+      chat_id
+        .parse::<whatsapp_rust::Jid>()
+        .map_err(|error| {
+          WppError::Other(
+            format!(
+              "invalid native chat id `{chat_id}`: {error}"
+            )
+          )
+        })?;
+
+    let message =
+      whatsapp_rust::waproto::whatsapp::Message::text(
+        text
+      );
+
+    let result =
+      self
+        .client
+        .send_message(
+          jid,
+          message.clone(),
+        )
+        .await
+        .map_err(|error| {
+          WppError::Other(
+            format!(
+              "failed to send native text message: {error}"
+            )
+          )
+        })?;
+
+    self
+      .chat_store
+      .record_outgoing(
+        &result.to,
+        result.message_id,
+        &message,
+        whatsapp_rust::wacore::time::now_utc(),
+      )
+      .map_err(|error| {
+        WppError::Other(
+          format!(
+            "failed to record native outgoing message: {error}"
+          )
+        )
+      })?;
+
+    self
+      .chat_store
+      .flush()
+      .await
+      .map_err(|error| {
+        WppError::Other(
+          format!(
+            "failed to persist native outgoing message: {error}"
+          )
+        )
+      })?;
+
+    Ok(())
   }
 
   /// List chats materialized by the native chat store.
