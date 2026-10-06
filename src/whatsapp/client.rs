@@ -11,6 +11,7 @@ use crate::whatsapp::models::{
 use crate::whatsapp::native::{
   NativeAuthMode,
   NativeClient,
+  NativeRealtimeListener,
 };
 use crate::whatsapp::openwa::client::{
   OpenWAClient,
@@ -28,6 +29,7 @@ pub struct RealtimeListener {
 
 enum RealtimeBackend {
   OpenWA(OpenWARealtimeListener),
+  Native(NativeRealtimeListener),
 }
 
 impl RealtimeListener {
@@ -36,6 +38,10 @@ impl RealtimeListener {
   ) -> Option<RealtimeEvent> {
     match &mut self.backend {
       RealtimeBackend::OpenWA(
+        listener
+      ) => listener.try_recv(),
+
+      RealtimeBackend::Native(
         listener
       ) => listener.try_recv(),
     }
@@ -48,6 +54,10 @@ impl RealtimeListener {
       RealtimeBackend::OpenWA(
         listener
       ) => listener.recv().await,
+
+      RealtimeBackend::Native(
+        listener
+      ) => listener.recv().await,
     }
   }
 
@@ -56,6 +66,10 @@ impl RealtimeListener {
   ) -> Result<(), WppError> {
     match self.backend {
       RealtimeBackend::OpenWA(
+        listener
+      ) => listener.disconnect().await,
+
+      RealtimeBackend::Native(
         listener
       ) => listener.disconnect().await,
     }
@@ -785,9 +799,18 @@ impl WhatsAppClient {
         )
       }
 
-      Backend::Native(_) => {
-        native_not_implemented(
-          "open realtime listener"
+      Backend::Native(
+        client
+      ) => {
+        Ok(
+          RealtimeListener {
+            backend:
+              RealtimeBackend::Native(
+                client
+                  .listen()
+                  .await?,
+              ),
+          }
         )
       }
     }

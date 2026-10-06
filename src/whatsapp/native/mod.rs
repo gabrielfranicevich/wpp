@@ -4,4 +4,5 @@ pub use client::{
   NativeAuthEvent,
   NativeAuthMode,
   NativeClient,
+  NativeRealtimeListener,
 };

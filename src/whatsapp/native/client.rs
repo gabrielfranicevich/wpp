@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
+use whatsapp_rust::prelude::MessageExt;
 
 use tokio::sync::mpsc;
 use whatsapp_rust::bot::{
@@ -10,7 +11,14 @@ use whatsapp_rust::bot::{
 use whatsapp_rust::pair_code::PairCodeOptions;
 use whatsapp_rust::proto_helpers::MessageBuilderExt;
 use whatsapp_rust::store::SqliteStore;
-use whatsapp_rust::wacore::types::events::Subscription;
+use whatsapp_rust::wacore::types::events::{
+  Event as NativeEvent,
+  EventHandler,
+  EventInterest,
+  EventKind,
+  InboundMessage,
+  Subscription,
+};
 use whatsapp_rust::wacore_binary::JidExt;
 use whatsapp_rust_chat_store::{
   ChatCursor,
@@ -27,6 +35,7 @@ use crate::whatsapp::models::{
   Message,
   MessageDirection,
   MessagePage,
+  RealtimeEvent,
 };
 
 /// Authentication behavior requested when opening
@@ -56,6 +65,7 @@ pub enum NativeAuthEvent {
 }
 
 const CHAT_PAGE_SIZE: i64 = 1000;
+const REALTIME_CHANNEL_CAPACITY: usize = 256;
 
 pub struct NativeClient {
   client: Arc<whatsapp_rust::Client>,
@@ -63,6 +73,81 @@ pub struct NativeClient {
   auth_receiver: mpsc::Receiver<NativeAuthEvent>,
   chat_store: Arc<ChatStore>,
   chat_store_subscription: Subscription,
+}
+
+pub struct NativeRealtimeListener {
+  receiver: mpsc::Receiver<RealtimeEvent>,
+  subscription: Subscription,
+}
+
+impl NativeRealtimeListener {
+  pub fn try_recv(
+    &mut self,
+  ) -> Option<RealtimeEvent> {
+    match self.receiver.try_recv() {
+      Ok(event) => Some(event),
+
+      Err(mpsc::error::TryRecvError::Empty) => None,
+
+      Err(mpsc::error::TryRecvError::Disconnected) => None,
+    }
+  }
+
+  pub async fn recv(
+    &mut self,
+  ) -> Option<RealtimeEvent> {
+    self.receiver.recv().await
+  }
+
+  pub async fn disconnect(
+    self,
+  ) -> Result<(), WppError> {
+    drop(self.subscription);
+
+    Ok(())
+  }
+}
+
+struct NativeRealtimeHandler {
+  sender: mpsc::Sender<RealtimeEvent>,
+  own_jid: String,
+}
+
+impl EventHandler for NativeRealtimeHandler {
+  fn handle_event(
+    &self,
+    event: Arc<NativeEvent>,
+  ) {
+    let NativeEvent::Messages(
+      batch
+    ) = &*event
+    else {
+      return;
+    };
+
+    for message in batch {
+      if message.info.is_offline {
+        continue;
+      }
+
+      let event =
+        realtime_event_from_message(
+          message,
+          &self.own_jid,
+        );
+
+      let _ =
+        self.sender.try_send(event);
+    }
+  }
+
+  fn interest(
+    &self,
+  ) -> EventInterest {
+    EventInterest::of(
+      &[EventKind::Messages]
+    )
+  }
 }
 
 impl NativeClient {
@@ -165,7 +250,7 @@ impl NativeClient {
           return Err(
             WppError::Other(
               "phone number cannot be empty"
-                .to_string(),
+                .to_string()
             )
           );
         }
@@ -1063,6 +1148,47 @@ impl NativeClient {
     Ok(chats)
   }
 
+  pub async fn listen(
+    &self,
+  ) -> Result<NativeRealtimeListener, WppError> {
+    let (
+      sender,
+      receiver,
+    ) =
+      mpsc::channel(
+        REALTIME_CHANNEL_CAPACITY
+      );
+
+    let own_jid =
+      self
+        .client
+        .pn()
+        .map(|jid| jid.to_string())
+        .unwrap_or_default();
+
+    let handler =
+      Arc::new(
+        NativeRealtimeHandler {
+          sender,
+          own_jid,
+        }
+      );
+
+    let subscription =
+      self
+        .client
+        .subscribe_handler(
+          handler
+        );
+
+    Ok(
+      NativeRealtimeListener {
+        receiver,
+        subscription,
+      }
+    )
+  }
+
   pub async fn shutdown(
     self,
   ) {
@@ -1082,6 +1208,138 @@ impl NativeClient {
     drop(client);
 
     handle.shutdown().await;
+  }
+}
+
+fn realtime_event_from_message(
+  message: &InboundMessage,
+  own_jid: &str,
+) -> RealtimeEvent {
+  let chat_id =
+    message
+      .info
+      .source
+      .chat
+      .to_string();
+
+  let sender =
+    message
+      .info
+      .source
+      .sender
+      .to_string();
+
+  let from_me =
+    message
+      .info
+      .source
+      .is_from_me;
+
+  let from =
+    if from_me {
+      own_jid.to_string()
+    } else {
+      sender.clone()
+    };
+
+  let to =
+    if from_me {
+      chat_id.clone()
+    } else {
+      own_jid.to_string()
+    };
+
+  let text =
+    message
+      .message
+      .text_content()
+      .map(str::to_string);
+
+  let body =
+    text
+      .clone()
+      .or_else(|| {
+        message
+          .message
+          .get_caption()
+          .map(str::to_string)
+      });
+
+  let kind =
+    if text.is_some() {
+      "text".to_string()
+    } else if !message
+      .info
+      .media_type
+      .is_empty()
+    {
+      message
+        .info
+        .media_type
+        .clone()
+    } else if !message
+      .info
+      .r#type
+      .is_empty()
+    {
+      message
+        .info
+        .r#type
+        .clone()
+    } else {
+      "message".to_string()
+    };
+
+  let author =
+    if !from_me
+      && message
+        .info
+        .source
+        .chat
+        .is_group()
+    {
+      Some(sender)
+    } else {
+      None
+    };
+
+  RealtimeEvent {
+    event:
+      "message.received"
+        .to_string(),
+
+    timestamp:
+      message
+        .info
+        .timestamp
+        .to_rfc3339(),
+
+    data:
+      serde_json::json!({
+        "id":
+          message
+            .info
+            .id,
+        "chatId":
+          chat_id,
+        "from":
+          from,
+        "to":
+          to,
+        "body":
+          body,
+        "type":
+          kind,
+        "timestamp":
+          message
+            .info
+            .timestamp
+            .timestamp(),
+        "fromMe":
+          from_me,
+        "author":
+          author,
+      }),
   }
 }
 
@@ -1241,7 +1499,7 @@ fn parse_message_cursor(
 > {
   let (
     timestamp_ms,
-    seq,
+    seq
   ) =
     cursor
       .rsplit_once(':')
