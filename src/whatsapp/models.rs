@@ -34,6 +34,7 @@ pub enum MessageDirection {
 #[derive(Debug, Clone)]
 pub struct MessagePage {
   pub messages: Vec<Message>,
+  pub next_cursor: Option<String>,
 }
 
 /// A realtime event received from the active WhatsApp backend.

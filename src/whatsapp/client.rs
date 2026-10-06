@@ -83,12 +83,13 @@ impl WhatsAppClient {
     api_key: Option<String>,
   ) -> Self {
     Self {
-      backend: Backend::OpenWA(
-        OpenWAClient::new(
-          base_url,
-          api_key,
+      backend:
+        Backend::OpenWA(
+          OpenWAClient::new(
+            base_url,
+            api_key,
+          ),
         ),
-      ),
     }
   }
 
@@ -97,9 +98,10 @@ impl WhatsAppClient {
     client: NativeClient,
   ) -> Self {
     Self {
-      backend: Backend::Native(
-        client
-      ),
+      backend:
+        Backend::Native(
+          client
+        ),
     }
   }
 
@@ -115,16 +117,24 @@ impl WhatsAppClient {
       )
       .await?;
 
-    Ok(Self::native(client))
+    Ok(
+      Self::native(client)
+    )
   }
 
   /// Gracefully shut down the underlying backend.
-  pub async fn shutdown(self) {
+  pub async fn shutdown(
+    self,
+  ) {
     match self.backend {
       Backend::OpenWA(_) => {}
 
-      Backend::Native(client) => {
-        client.shutdown().await;
+      Backend::Native(
+        client
+      ) => {
+        client
+          .shutdown()
+          .await;
       }
     }
   }
@@ -133,8 +143,12 @@ impl WhatsAppClient {
     &self,
   ) -> Result<Vec<Session>, WppError> {
     match &self.backend {
-      Backend::OpenWA(client) => {
-        client.list_sessions().await
+      Backend::OpenWA(
+        client
+      ) => {
+        client
+          .list_sessions()
+          .await
       }
 
       Backend::Native(_) => {
@@ -150,9 +164,13 @@ impl WhatsAppClient {
     session_id: &str,
   ) -> Result<(), WppError> {
     match &self.backend {
-      Backend::OpenWA(client) => {
+      Backend::OpenWA(
         client
-          .delete_session(session_id)
+      ) => {
+        client
+          .delete_session(
+            session_id
+          )
           .await
       }
 
@@ -169,33 +187,48 @@ impl WhatsAppClient {
     session_id: &str,
   ) -> Result<Session, WppError> {
     match &self.backend {
-      Backend::OpenWA(client) => {
+      Backend::OpenWA(
         client
-          .logout(session_id)
+      ) => {
+        client
+          .logout(
+            session_id
+          )
           .await
       }
 
-      Backend::Native(client) => {
-        client.logout().await;
+      Backend::Native(
+        client
+      ) => {
+        client
+          .logout()
+          .await;
 
         let push_name =
           client.push_name();
 
         Ok(Session {
-          id: session_id.to_string(),
+          id:
+            session_id.to_string(),
+
           name:
             if push_name
               .trim()
               .is_empty()
             {
-              session_id.to_string()
+              session_id
+                .to_string()
             } else {
               push_name.clone()
             },
+
           status:
-            "logged_out".to_string(),
+            "logged_out"
+              .to_string(),
+
           phone:
             client.phone(),
+
           push_name:
             if push_name
               .trim()
@@ -214,10 +247,17 @@ impl WhatsAppClient {
     &self,
     session_id: &str,
     chat_id: &str,
-  ) -> Result<Option<Chat>, WppError> {
+  ) -> Result<
+    Option<Chat>,
+    WppError,
+  > {
     match &self.backend {
-      Backend::OpenWA(client) => {
-        if !chat_id.contains('@') {
+      Backend::OpenWA(
+        client
+      ) => {
+        if !chat_id
+          .contains('@')
+        {
           return Ok(None);
         }
 
@@ -256,7 +296,9 @@ impl WhatsAppClient {
         }
       }
 
-      Backend::Native(client) => {
+      Backend::Native(
+        client
+      ) => {
         client
           .get_chat(chat_id)
           .await
@@ -268,9 +310,14 @@ impl WhatsAppClient {
     &self,
     session_id: &str,
     phone: &str,
-  ) -> Result<Vec<Chat>, WppError> {
+  ) -> Result<
+    Vec<Chat>,
+    WppError,
+  > {
     match &self.backend {
-      Backend::OpenWA(client) => {
+      Backend::OpenWA(
+        client
+      ) => {
         let mut matches =
           Vec::new();
 
@@ -291,10 +338,14 @@ impl WhatsAppClient {
             chats.len();
 
           for chat in chats {
-            if normalize_phone(&chat.id)
-              == normalize_phone(phone)
-            {
-              matches.push(chat);
+            if normalize_phone(
+              &chat.id
+            ) == normalize_phone(
+              phone
+            ) {
+              matches.push(
+                chat
+              );
             }
           }
 
@@ -304,15 +355,20 @@ impl WhatsAppClient {
             break;
           }
 
-          offset += page_len;
+          offset +=
+            page_len;
         }
 
         Ok(matches)
       }
 
-      Backend::Native(client) => {
+      Backend::Native(
         client
-          .find_chats_by_phone(phone)
+      ) => {
+        client
+          .find_chats_by_phone(
+            phone
+          )
           .await
       }
     }
@@ -323,9 +379,14 @@ impl WhatsAppClient {
     session_id: &str,
     limit: usize,
     offset: usize,
-  ) -> Result<Vec<Chat>, WppError> {
+  ) -> Result<
+    Vec<Chat>,
+    WppError,
+  > {
     match &self.backend {
-      Backend::OpenWA(client) => {
+      Backend::OpenWA(
+        client
+      ) => {
         client
           .list_chats(
             session_id,
@@ -335,7 +396,9 @@ impl WhatsAppClient {
           .await
       }
 
-      Backend::Native(client) => {
+      Backend::Native(
+        client
+      ) => {
         client
           .list_chats(
             limit,
@@ -352,7 +415,9 @@ impl WhatsAppClient {
     chat_id: &str,
   ) -> Result<(), WppError> {
     match &self.backend {
-      Backend::OpenWA(client) => {
+      Backend::OpenWA(
+        client
+      ) => {
         client
           .delete_chat(
             session_id,
@@ -375,7 +440,9 @@ impl WhatsAppClient {
     contact_id: &str,
   ) -> Result<(), WppError> {
     match &self.backend {
-      Backend::OpenWA(client) => {
+      Backend::OpenWA(
+        client
+      ) => {
         client
           .block_contact(
             session_id,
@@ -398,7 +465,9 @@ impl WhatsAppClient {
     contact_id: &str,
   ) -> Result<(), WppError> {
     match &self.backend {
-      Backend::OpenWA(client) => {
+      Backend::OpenWA(
+        client
+      ) => {
         client
           .unblock_contact(
             session_id,
@@ -422,7 +491,9 @@ impl WhatsAppClient {
     archive: bool,
   ) -> Result<(), WppError> {
     match &self.backend {
-      Backend::OpenWA(client) => {
+      Backend::OpenWA(
+        client
+      ) => {
         client
           .archive_chat(
             session_id,
@@ -447,7 +518,9 @@ impl WhatsAppClient {
     pin: bool,
   ) -> Result<(), WppError> {
     match &self.backend {
-      Backend::OpenWA(client) => {
+      Backend::OpenWA(
+        client
+      ) => {
         client
           .pin_chat(
             session_id,
@@ -472,7 +545,9 @@ impl WhatsAppClient {
     mute_until: Option<i64>,
   ) -> Result<(), WppError> {
     match &self.backend {
-      Backend::OpenWA(client) => {
+      Backend::OpenWA(
+        client
+      ) => {
         client
           .mute_chat(
             session_id,
@@ -497,7 +572,9 @@ impl WhatsAppClient {
     message_ids: &[String],
   ) -> Result<(), WppError> {
     match &self.backend {
-      Backend::OpenWA(client) => {
+      Backend::OpenWA(
+        client
+      ) => {
         client
           .mark_chat_read(
             session_id,
@@ -521,7 +598,9 @@ impl WhatsAppClient {
     chat_id: &str,
   ) -> Result<(), WppError> {
     match &self.backend {
-      Backend::OpenWA(client) => {
+      Backend::OpenWA(
+        client
+      ) => {
         client
           .mark_chat_unread(
             session_id,
@@ -545,7 +624,9 @@ impl WhatsAppClient {
     text: &str,
   ) -> Result<(), WppError> {
     match &self.backend {
-      Backend::OpenWA(client) => {
+      Backend::OpenWA(
+        client
+      ) => {
         client
           .send_text(
             session_id,
@@ -555,7 +636,9 @@ impl WhatsAppClient {
           .await
       }
 
-      Backend::Native(client) => {
+      Backend::Native(
+        client
+      ) => {
         client
           .send_text(
             chat_id,
@@ -574,7 +657,9 @@ impl WhatsAppClient {
     after: Option<&str>,
   ) -> Result<MessagePage, WppError> {
     match &self.backend {
-      Backend::OpenWA(client) => {
+      Backend::OpenWA(
+        client
+      ) => {
         client
           .list_messages(
             session_id,
@@ -585,10 +670,16 @@ impl WhatsAppClient {
           .await
       }
 
-      Backend::Native(_) => {
-        native_not_implemented(
-          "list persisted messages"
-        )
+      Backend::Native(
+        client
+      ) => {
+        client
+          .list_persisted_messages(
+            chat_id,
+            limit,
+            after,
+          )
+          .await
       }
     }
   }
@@ -600,9 +691,14 @@ impl WhatsAppClient {
     chat_id: &str,
     limit: usize,
     deep: bool,
-  ) -> Result<Vec<Message>, WppError> {
+  ) -> Result<
+    Vec<Message>,
+    WppError,
+  > {
     match &self.backend {
-      Backend::OpenWA(client) => {
+      Backend::OpenWA(
+        client
+      ) => {
         client
           .get_chat_history(
             session_id,
@@ -613,7 +709,9 @@ impl WhatsAppClient {
           .await
       }
 
-      Backend::Native(client) => {
+      Backend::Native(
+        client
+      ) => {
         client
           .get_chat_history(
             chat_id,
@@ -629,17 +727,26 @@ impl WhatsAppClient {
   pub async fn listen(
     &self,
     session_id: &str,
-  ) -> Result<RealtimeListener, WppError> {
+  ) -> Result<
+    RealtimeListener,
+    WppError,
+  > {
     match &self.backend {
-      Backend::OpenWA(client) => {
-        Ok(RealtimeListener {
-          backend:
-            RealtimeBackend::OpenWA(
-              client
-                .listen(session_id)
-                .await?,
-            ),
-        })
+      Backend::OpenWA(
+        client
+      ) => {
+        Ok(
+          RealtimeListener {
+            backend:
+              RealtimeBackend::OpenWA(
+                client
+                  .listen(
+                    session_id
+                  )
+                  .await?,
+              ),
+          }
+        )
       }
 
       Backend::Native(_) => {
@@ -664,9 +771,11 @@ fn normalize_phone(
 fn native_not_implemented<T>(
   operation: &str,
 ) -> Result<T, WppError> {
-  Err(WppError::Other(
-    format!(
-      "native backend does not implement {operation} yet"
+  Err(
+    WppError::Other(
+      format!(
+        "native backend does not implement {operation} yet"
+      )
     )
-  ))
+  )
 }

@@ -87,60 +87,89 @@ impl OpenWAClient {
     format!("{}/api{}", self.base_url, path)
   }
 
-  fn request(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+  fn request(
+    &self,
+    builder: reqwest::RequestBuilder,
+  ) -> reqwest::RequestBuilder {
     match &self.api_key {
-      Some(api_key) => builder.header("X-API-Key", api_key),
+      Some(api_key) => {
+        builder.header("X-API-Key", api_key)
+      }
 
       None => builder,
     }
   }
 
-  async fn check(resp: Response) -> Result<Response, WppError> {
+  async fn check(
+    resp: Response,
+  ) -> Result<Response, WppError> {
     if resp.status().is_success() {
       return Ok(resp);
     }
 
-    let status = resp.status().as_u16();
+    let status =
+      resp.status().as_u16();
 
-    let body = resp.text().await.unwrap_or_default();
+    let body =
+      resp.text().await.unwrap_or_default();
 
-    let message = if status == 401 {
-      format!(
-        "OpenWA authentication failed. \
+    let message =
+      if status == 401 {
+        format!(
+          "OpenWA authentication failed. \
      Set WPP_OPENWA_API_KEY (or OPENWA_API_KEY). \
      Response: {body}"
-      )
-    } else {
-      body
-    };
+        )
+      } else {
+        body
+      };
 
-    Err(WppError::Api { status, message })
+    Err(WppError::Api {
+      status,
+      message,
+    })
   }
 
   /// GET /api/sessions
   ///
   /// Fetch every session from OpenWA, following the API's
   /// pagination until all sessions have been retrieved.
-  pub async fn list_sessions(&self) -> Result<Vec<Session>, WppError> {
+  pub async fn list_sessions(
+    &self,
+  ) -> Result<Vec<Session>, WppError> {
     const PAGE_SIZE: usize = 1000;
 
     let mut offset = 0usize;
     let mut sessions = Vec::new();
 
     loop {
-      let builder = self
-        .http
-        .get(self.url("/sessions"))
-        .query(&[("limit", PAGE_SIZE), ("offset", offset)]);
+      let builder =
+        self
+          .http
+          .get(self.url("/sessions"))
+          .query(&[
+            ("limit", PAGE_SIZE),
+            ("offset", offset),
+          ]);
 
-      let response = self.request(builder).send().await?;
+      let response =
+        self.request(builder).send().await?;
 
-      let page: Vec<OpenWASession> =
-        Self::check(response).await?.json().await?;
+      let page:
+        Vec<OpenWASession> =
+        Self::check(response)
+          .await?
+          .json()
+          .await?;
 
-      let page_len = page.len();
+      let page_len =
+        page.len();
 
-      sessions.extend(page.into_iter().map(Session::from));
+      sessions.extend(
+        page
+          .into_iter()
+          .map(Session::from),
+      );
 
       if page_len < PAGE_SIZE {
         break;
@@ -153,12 +182,19 @@ impl OpenWAClient {
   }
 
   /// DELETE /api/sessions/:id
-  pub async fn delete_session(&self, session_id: &str) -> Result<(), WppError> {
-    let builder = self
-      .http
-      .delete(self.url(&format!("/sessions/{session_id}")));
+  pub async fn delete_session(
+    &self,
+    session_id: &str,
+  ) -> Result<(), WppError> {
+    let builder =
+      self
+        .http
+        .delete(self.url(&format!(
+          "/sessions/{session_id}"
+        )));
 
-    let response = self.request(builder).send().await?;
+    let response =
+      self.request(builder).send().await?;
 
     Self::check(response).await?;
 
@@ -166,14 +202,26 @@ impl OpenWAClient {
   }
 
   /// POST /api/sessions/:id/logout
-  pub async fn logout(&self, session_id: &str) -> Result<Session, WppError> {
-    let builder = self
-      .http
-      .post(self.url(&format!("/sessions/{session_id}/logout")));
+  pub async fn logout(
+    &self,
+    session_id: &str,
+  ) -> Result<Session, WppError> {
+    let builder =
+      self
+        .http
+        .post(self.url(&format!(
+          "/sessions/{session_id}/logout"
+        )));
 
-    let response = self.request(builder).send().await?;
+    let response =
+      self.request(builder).send().await?;
 
-    let session: OpenWASession = Self::check(response).await?.json().await?;
+    let session:
+      OpenWASession =
+      Self::check(response)
+        .await?
+        .json()
+        .await?;
 
     Ok(session.into())
   }
@@ -185,19 +233,33 @@ impl OpenWAClient {
     limit: usize,
     offset: usize,
   ) -> Result<Vec<Chat>, WppError> {
-    let builder = self
-      .http
-      .get(self.url(&format!(
-        "/sessions/{session_id}/chats"
-      )))
-      .query(&[("limit", limit), ("offset", offset)]);
+    let builder =
+      self
+        .http
+        .get(self.url(&format!(
+          "/sessions/{session_id}/chats"
+        )))
+        .query(&[
+          ("limit", limit),
+          ("offset", offset),
+        ]);
 
-    let response = self.request(builder).send().await?;
+    let response =
+      self.request(builder).send().await?;
 
-    let chats: Vec<ChatSummary> =
-      Self::check(response).await?.json().await?;
+    let chats:
+      Vec<ChatSummary> =
+      Self::check(response)
+        .await?
+        .json()
+        .await?;
 
-    Ok(chats.into_iter().map(Chat::from).collect())
+    Ok(
+      chats
+        .into_iter()
+        .map(Chat::from)
+        .collect()
+    )
   }
 
   /// POST /api/sessions/:id/chats/delete
@@ -208,16 +270,18 @@ impl OpenWAClient {
     session_id: &str,
     chat_id: &str,
   ) -> Result<(), WppError> {
-    let builder = self
-      .http
-      .post(self.url(&format!(
-        "/sessions/{session_id}/chats/delete"
-      )))
-      .json(&serde_json::json!({
-        "chatId": chat_id,
-      }));
+    let builder =
+      self
+        .http
+        .post(self.url(&format!(
+          "/sessions/{session_id}/chats/delete"
+        )))
+        .json(&serde_json::json!({
+          "chatId": chat_id,
+        }));
 
-    let response = self.request(builder).send().await?;
+    let response =
+      self.request(builder).send().await?;
 
     Self::check(response).await?;
 
@@ -232,13 +296,15 @@ impl OpenWAClient {
     session_id: &str,
     contact_id: &str,
   ) -> Result<(), WppError> {
-    let builder = self
-      .http
-      .post(self.url(&format!(
-        "/sessions/{session_id}/contacts/{contact_id}/block"
-      )));
+    let builder =
+      self
+        .http
+        .post(self.url(&format!(
+          "/sessions/{session_id}/contacts/{contact_id}/block"
+        )));
 
-    let response = self.request(builder).send().await?;
+    let response =
+      self.request(builder).send().await?;
 
     Self::check(response).await?;
 
@@ -253,13 +319,15 @@ impl OpenWAClient {
     session_id: &str,
     contact_id: &str,
   ) -> Result<(), WppError> {
-    let builder = self
-      .http
-      .delete(self.url(&format!(
-        "/sessions/{session_id}/contacts/{contact_id}/block"
-      )));
+    let builder =
+      self
+        .http
+        .delete(self.url(&format!(
+          "/sessions/{session_id}/contacts/{contact_id}/block"
+        )));
 
-    let response = self.request(builder).send().await?;
+    let response =
+      self.request(builder).send().await?;
 
     Self::check(response).await?;
 
@@ -275,17 +343,19 @@ impl OpenWAClient {
     chat_id: &str,
     archive: bool,
   ) -> Result<(), WppError> {
-    let builder = self
-      .http
-      .post(self.url(&format!(
-        "/sessions/{session_id}/chats/archive"
-      )))
-      .json(&serde_json::json!({
-        "chatId": chat_id,
-        "archive": archive,
-      }));
+    let builder =
+      self
+        .http
+        .post(self.url(&format!(
+          "/sessions/{session_id}/chats/archive"
+        )))
+        .json(&serde_json::json!({
+          "chatId": chat_id,
+          "archive": archive,
+        }));
 
-    let response = self.request(builder).send().await?;
+    let response =
+      self.request(builder).send().await?;
 
     Self::check(response).await?;
 
@@ -301,17 +371,19 @@ impl OpenWAClient {
     chat_id: &str,
     pin: bool,
   ) -> Result<(), WppError> {
-    let builder = self
-      .http
-      .post(self.url(&format!(
-        "/sessions/{session_id}/chats/pin"
-      )))
-      .json(&serde_json::json!({
-        "chatId": chat_id,
-        "pin": pin,
-      }));
+    let builder =
+      self
+        .http
+        .post(self.url(&format!(
+          "/sessions/{session_id}/chats/pin"
+        )))
+        .json(&serde_json::json!({
+          "chatId": chat_id,
+          "pin": pin,
+        }));
 
-    let response = self.request(builder).send().await?;
+    let response =
+      self.request(builder).send().await?;
 
     Self::check(response).await?;
 
@@ -328,17 +400,19 @@ impl OpenWAClient {
     chat_id: &str,
     mute_until: Option<i64>,
   ) -> Result<(), WppError> {
-    let builder = self
-      .http
-      .post(self.url(&format!(
-        "/sessions/{session_id}/chats/mute"
-      )))
-      .json(&serde_json::json!({
-        "chatId": chat_id,
-        "muteUntil": mute_until,
-      }));
+    let builder =
+      self
+        .http
+        .post(self.url(&format!(
+          "/sessions/{session_id}/chats/mute"
+        )))
+        .json(&serde_json::json!({
+          "chatId": chat_id,
+          "muteUntil": mute_until,
+        }));
 
-    let response = self.request(builder).send().await?;
+    let response =
+      self.request(builder).send().await?;
 
     Self::check(response).await?;
 
@@ -354,25 +428,28 @@ impl OpenWAClient {
     chat_id: &str,
     message_ids: &[String],
   ) -> Result<(), WppError> {
-    let body = if message_ids.is_empty() {
-      serde_json::json!({
-        "chatId": chat_id,
-      })
-    } else {
-      serde_json::json!({
-        "chatId": chat_id,
-        "messageIds": message_ids,
-      })
-    };
+    let body =
+      if message_ids.is_empty() {
+        serde_json::json!({
+          "chatId": chat_id,
+        })
+      } else {
+        serde_json::json!({
+          "chatId": chat_id,
+          "messageIds": message_ids,
+        })
+      };
 
-    let builder = self
-      .http
-      .post(self.url(&format!(
-        "/sessions/{session_id}/chats/read"
-      )))
-      .json(&body);
+    let builder =
+      self
+        .http
+        .post(self.url(&format!(
+          "/sessions/{session_id}/chats/read"
+        )))
+        .json(&body);
 
-    let response = self.request(builder).send().await?;
+    let response =
+      self.request(builder).send().await?;
 
     Self::check(response).await?;
 
@@ -387,16 +464,18 @@ impl OpenWAClient {
     session_id: &str,
     chat_id: &str,
   ) -> Result<(), WppError> {
-    let builder = self
-      .http
-      .post(self.url(&format!(
-        "/sessions/{session_id}/chats/unread"
-      )))
-      .json(&serde_json::json!({
-        "chatId": chat_id,
-      }));
+    let builder =
+      self
+        .http
+        .post(self.url(&format!(
+          "/sessions/{session_id}/chats/unread"
+        )))
+        .json(&serde_json::json!({
+          "chatId": chat_id,
+        }));
 
-    let response = self.request(builder).send().await?;
+    let response =
+      self.request(builder).send().await?;
 
     Self::check(response).await?;
 
@@ -412,17 +491,19 @@ impl OpenWAClient {
     chat_id: &str,
     text: &str,
   ) -> Result<(), WppError> {
-    let builder = self
-      .http
-      .post(self.url(&format!(
-        "/sessions/{session_id}/messages/send-text"
-      )))
-      .json(&serde_json::json!({
-        "chatId": chat_id,
-        "text": text,
-      }));
+    let builder =
+      self
+        .http
+        .post(self.url(&format!(
+          "/sessions/{session_id}/messages/send-text"
+        )))
+        .json(&serde_json::json!({
+          "chatId": chat_id,
+          "text": text,
+        }));
 
-    let response = self.request(builder).send().await?;
+    let response =
+      self.request(builder).send().await?;
 
     Self::check(response).await?;
 
@@ -442,53 +523,92 @@ impl OpenWAClient {
     limit: usize,
     after: Option<&str>,
   ) -> Result<MessagePage, WppError> {
-    let limit = limit.clamp(1, 100);
+    let limit =
+      limit.clamp(1, 100);
 
-    let mut params = vec![
-      ("chatId", chat_id.to_string()),
-      ("limit", limit.to_string()),
-      ("inlineMedia", "false".to_string()),
-    ];
+    let mut params =
+      vec![
+        (
+          "chatId",
+          chat_id.to_string(),
+        ),
+        (
+          "limit",
+          limit.to_string(),
+        ),
+        (
+          "inlineMedia",
+          "false".to_string(),
+        ),
+      ];
 
     if let Some(after) = after {
-      params.push(("after", after.to_string()));
+      params.push((
+        "after",
+        after.to_string(),
+      ));
     }
 
-    let builder = self
-      .http
-      .get(self.url(&format!(
-        "/sessions/{session_id}/messages"
-      )))
-      .query(&params);
+    let builder =
+      self
+        .http
+        .get(self.url(&format!(
+          "/sessions/{session_id}/messages"
+        )))
+        .query(&params);
 
-    let response = self.request(builder).send().await?;
+    let response =
+      self.request(builder).send().await?;
 
-    let response: MessageListResponse =
-      Self::check(response).await?.json().await?;
+    let response:
+      MessageListResponse =
+      Self::check(response)
+        .await?
+        .json()
+        .await?;
 
-    let messages = response
-      .messages
-      .into_iter()
-      .map(|message| Message {
-        id: message.id,
-        chat_id: message.chat_id,
-        from: message.from,
-        to: message.to,
-        body: message.body,
-        kind: message.kind,
-        direction: if message.direction.eq_ignore_ascii_case("outgoing") {
-          MessageDirection::Outgoing
-        } else {
-          MessageDirection::Incoming
-        },
-        author: message.author,
-        timestamp: message.timestamp,
-        status: message.status,
-      })
-      .collect();
+    let messages =
+      response
+        .messages
+        .into_iter()
+        .map(|message| Message {
+          id: message.id,
+          chat_id: message.chat_id,
+          from: message.from,
+          to: message.to,
+          body: message.body,
+          kind: message.kind,
+          direction:
+            if message
+              .direction
+              .eq_ignore_ascii_case(
+                "outgoing",
+              )
+            {
+              MessageDirection::Outgoing
+            } else {
+              MessageDirection::Incoming
+            },
+          author: message.author,
+          timestamp: message.timestamp,
+          status: message.status,
+        })
+        .collect::<Vec<_>>();
+
+    let next_cursor =
+      if messages.len() == limit {
+        messages
+          .last()
+          .map(|message| {
+            message.id.clone()
+          })
+      } else {
+        None
+      };
 
     Ok(MessagePage {
       messages,
+      next_cursor,
     })
   }
 
@@ -505,47 +625,75 @@ impl OpenWAClient {
     limit: usize,
     deep: bool,
   ) -> Result<Vec<Message>, WppError> {
-    let max_limit = if deep { 2000 } else { 100 };
+    let max_limit =
+      if deep {
+        2000
+      } else {
+        100
+      };
 
-    let limit = limit.clamp(1, max_limit);
+    let limit =
+      limit.clamp(
+        1,
+        max_limit,
+      );
 
-    let mut params = vec![("limit", limit.to_string())];
+    let mut params =
+      vec![
+        (
+          "limit",
+          limit.to_string(),
+        )
+      ];
 
     if deep {
-      params.push(("deep", "true".to_string()));
+      params.push((
+        "deep",
+        "true".to_string(),
+      ));
     }
 
-    let builder = self
-      .http
-      .get(self.url(&format!(
-        "/sessions/{session_id}/messages/{chat_id}/history"
-      )))
-      .query(&params);
+    let builder =
+      self
+        .http
+        .get(self.url(&format!(
+          "/sessions/{session_id}/messages/{chat_id}/history"
+        )))
+        .query(&params);
 
-    let response = self.request(builder).send().await?;
+    let response =
+      self.request(builder).send().await?;
 
-    let messages: Vec<ChatHistoryMessageRecord> =
-      Self::check(response).await?.json().await?;
+    let messages:
+      Vec<ChatHistoryMessageRecord> =
+      Self::check(response)
+        .await?
+        .json()
+        .await?;
 
-    Ok(messages
-      .into_iter()
-      .map(|message| Message {
-        id: message.id,
-        chat_id: message.chat_id,
-        from: message.from,
-        to: message.to,
-        body: Some(message.body),
-        kind: message.kind,
-        direction: if message.from_me {
-          MessageDirection::Outgoing
-        } else {
-          MessageDirection::Incoming
-        },
-        author: message.author,
-        timestamp: Some(message.timestamp),
-        status: String::new(),
-      })
-      .collect())
+    Ok(
+      messages
+        .into_iter()
+        .map(|message| Message {
+          id: message.id,
+          chat_id: message.chat_id,
+          from: message.from,
+          to: message.to,
+          body: Some(message.body),
+          kind: message.kind,
+          direction:
+            if message.from_me {
+              MessageDirection::Outgoing
+            } else {
+              MessageDirection::Incoming
+            },
+          author: message.author,
+          timestamp:
+            Some(message.timestamp),
+          status: String::new(),
+        })
+        .collect()
+    )
   }
 
   /// Connect to OpenWA's realtime Socket.IO namespace and subscribe
@@ -557,116 +705,194 @@ impl OpenWAClient {
   pub async fn listen(
     &self,
     session_id: &str,
-  ) -> Result<OpenWARealtimeListener, WppError> {
-    let (sender, receiver) =
-      mpsc::channel(REALTIME_CHANNEL_CAPACITY);
+  ) -> Result<
+    OpenWARealtimeListener,
+    WppError,
+  > {
+    let (
+      sender,
+      receiver,
+    ) =
+      mpsc::channel(
+        REALTIME_CHANNEL_CAPACITY
+      );
 
-    let subscription = json!({
-      "type": "subscribe",
-      "sessionId": session_id,
-      "events": [REALTIME_MESSAGE_RECEIVED],
-      "requestId": format!("wpp-listen-{session_id}"),
-    });
-
-    let subscription_for_open = subscription.clone();
-    let expected_session_id = session_id.to_string();
-
-    let sender_for_message = sender.clone();
-
-    let mut builder = ClientBuilder::new(&self.base_url)
-      .namespace(REALTIME_NAMESPACE)
-      .reconnect(true)
-      .reconnect_on_disconnect(true)
-      .reconnect_delay(1000, 5000)
-      .on("open", move |_, socket| {
-        let subscription = subscription_for_open.clone();
-
-        async move {
-          if let Err(error) =
-            socket.emit(REALTIME_EVENT_NAME, subscription).await
-          {
-            eprintln!(
-              "wpp: realtime subscription failed: {error}"
-            );
-          }
-        }
-        .boxed()
-      })
-      .on("message", move |payload, _| {
-        let sender = sender_for_message.clone();
-        let expected_session_id = expected_session_id.clone();
-
-        async move {
-          let Some(value) = payload_to_json(payload) else {
-            return;
-          };
-
-          let Ok(envelope) =
-            serde_json::from_value::<RealtimeEnvelope>(value)
-          else {
-            return;
-          };
-
-          if envelope.kind != "event" {
-            return;
-          }
-
-          let Some(payload) = envelope.payload else {
-            return;
-          };
-
-          if payload.event != REALTIME_MESSAGE_RECEIVED {
-            return;
-          }
-
-          if payload.session_id != expected_session_id {
-            return;
-          }
-
-          let event = RealtimeEvent {
-            event: payload.event,
-            timestamp: envelope.timestamp,
-            data: payload.data,
-          };
-
-          let _ = sender.send(event).await;
-        }
-        .boxed()
-      })
-      .on("error", |payload, _| {
-        async move {
-          eprintln!(
-            "wpp: realtime listener error: {payload:?}"
-          );
-        }
-        .boxed()
+    let subscription =
+      json!({
+        "type": "subscribe",
+        "sessionId": session_id,
+        "events": [
+          REALTIME_MESSAGE_RECEIVED
+        ],
+        "requestId":
+          format!(
+            "wpp-listen-{session_id}"
+          ),
       });
 
-    if let Some(api_key) = &self.api_key {
-      builder = builder.auth(json!({
-        "apiKey": api_key,
-      }));
+    let subscription_for_open =
+      subscription.clone();
+
+    let expected_session_id =
+      session_id.to_string();
+
+    let sender_for_message =
+      sender.clone();
+
+    let mut builder =
+      ClientBuilder::new(
+        &self.base_url
+      )
+      .namespace(
+        REALTIME_NAMESPACE
+      )
+      .reconnect(true)
+      .reconnect_on_disconnect(true)
+      .reconnect_delay(
+        1000,
+        5000,
+      )
+      .on(
+        "open",
+        move |_, socket| {
+          let subscription =
+            subscription_for_open
+              .clone();
+
+          async move {
+            if let Err(error) =
+              socket
+                .emit(
+                  REALTIME_EVENT_NAME,
+                  subscription,
+                )
+                .await
+            {
+              eprintln!(
+                "wpp: realtime subscription failed: {error}"
+              );
+            }
+          }
+          .boxed()
+        },
+      )
+      .on(
+        "message",
+        move |payload, _| {
+          let sender =
+            sender_for_message
+              .clone();
+
+          let expected_session_id =
+            expected_session_id
+              .clone();
+
+          async move {
+            let Some(value) =
+              payload_to_json(
+                payload
+              )
+            else {
+              return;
+            };
+
+            let Ok(envelope) =
+              serde_json::from_value::<
+                RealtimeEnvelope
+              >(value)
+            else {
+              return;
+            };
+
+            if envelope.kind
+              != "event"
+            {
+              return;
+            }
+
+            let Some(payload) =
+              envelope.payload
+            else {
+              return;
+            };
+
+            if payload.event
+              != REALTIME_MESSAGE_RECEIVED
+            {
+              return;
+            }
+
+            if payload.session_id
+              != expected_session_id
+            {
+              return;
+            }
+
+            let event =
+              RealtimeEvent {
+                event:
+                  payload.event,
+                timestamp:
+                  envelope.timestamp,
+                data:
+                  payload.data,
+              };
+
+            let _ =
+              sender
+                .send(event)
+                .await;
+          }
+          .boxed()
+        },
+      )
+      .on(
+        "error",
+        |payload, _| {
+          async move {
+            eprintln!(
+              "wpp: realtime listener error: {payload:?}"
+            );
+          }
+          .boxed()
+        },
+      );
+
+    if let Some(api_key) =
+      &self.api_key
+    {
+      builder =
+        builder.auth(json!({
+          "apiKey": api_key,
+        }));
     }
 
-    let socket = builder
-      .connect()
-      .await
-      .map_err(|error| {
-        WppError::Other(format!(
-          "failed to connect to OpenWA realtime events: {error}"
-        ))
-      })?;
+    let socket =
+      builder
+        .connect()
+        .await
+        .map_err(|error| {
+          WppError::Other(format!(
+            "failed to connect to OpenWA realtime events: {error}"
+          ))
+        })?;
 
-    Ok(OpenWARealtimeListener {
-      socket,
-      receiver,
-    })
+    Ok(
+      OpenWARealtimeListener {
+        socket,
+        receiver,
+      }
+    )
   }
 }
 
-fn payload_to_json(payload: Payload) -> Option<Value> {
+fn payload_to_json(
+  payload: Payload,
+) -> Option<Value> {
   match payload {
-    Payload::Text(values) => values.into_iter().next(),
+    Payload::Text(values) => {
+      values.into_iter().next()
+    }
 
     Payload::Binary(_) => None,
 
@@ -675,7 +901,9 @@ fn payload_to_json(payload: Payload) -> Option<Value> {
 }
 
 impl From<OpenWASession> for Session {
-  fn from(session: OpenWASession) -> Self {
+  fn from(
+    session: OpenWASession,
+  ) -> Self {
     Self {
       id: session.id,
       name: session.name,
@@ -687,14 +915,19 @@ impl From<OpenWASession> for Session {
 }
 
 impl From<ChatSummary> for Chat {
-  fn from(chat: ChatSummary) -> Self {
+  fn from(
+    chat: ChatSummary,
+  ) -> Self {
     Self {
       id: chat.id,
       name: chat.name,
       is_group: chat.is_group,
-      unread_count: chat.unread_count,
-      last_message: chat.last_message,
-      timestamp: chat.timestamp,
+      unread_count:
+        chat.unread_count,
+      last_message:
+        chat.last_message,
+      timestamp:
+        chat.timestamp,
     }
   }
 }

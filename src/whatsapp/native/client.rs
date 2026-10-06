@@ -16,6 +16,7 @@ use whatsapp_rust_chat_store::{
   ChatCursor,
   ChatEntry,
   ChatStore,
+  MessageCursor,
   MessageStatus,
   StoredMessage,
 };
@@ -25,6 +26,7 @@ use crate::whatsapp::models::{
   Chat,
   Message,
   MessageDirection,
+  MessagePage,
 };
 
 /// Authentication behavior requested when opening
@@ -55,10 +57,6 @@ pub enum NativeAuthEvent {
 
 const CHAT_PAGE_SIZE: i64 = 1000;
 
-/// Native WhatsApp transport backed by `whatsapp-rust`.
-///
-/// This adapter owns both the whatsapp-rust client and the background
-/// bot task that keeps the session alive.
 pub struct NativeClient {
   client: Arc<whatsapp_rust::Client>,
   handle: BotHandle,
@@ -84,7 +82,7 @@ impl NativeClient {
           WppError::Other(
             format!(
               "failed to create native session directory: {error}"
-            ),
+            )
           )
         })?;
     }
@@ -95,15 +93,17 @@ impl NativeClient {
         .into_owned();
 
     let backend =
-      SqliteStore::new(&database_url)
-        .await
-        .map_err(|error| {
-          WppError::Other(
-            format!(
-              "failed to open native WhatsApp storage: {error}"
-            ),
+      SqliteStore::new(
+        &database_url
+      )
+      .await
+      .map_err(|error| {
+        WppError::Other(
+          format!(
+            "failed to open native WhatsApp storage: {error}"
           )
-        })?;
+        )
+      })?;
 
     let chat_store =
       ChatStore::new(&backend)
@@ -112,14 +112,15 @@ impl NativeClient {
           WppError::Other(
             format!(
               "failed to open native chat store: {error}"
-            ),
+            )
           )
         })?;
 
     let (
       sender,
       receiver,
-    ) = mpsc::channel(16);
+    ) =
+      mpsc::channel(16);
 
     let mut builder =
       Bot::builder()
@@ -139,30 +140,33 @@ impl NativeClient {
                 sender.clone();
 
               async move {
-                let _ = sender
-                  .send(
-                    NativeAuthEvent::QrCode(
-                      code,
-                    ),
-                  )
-                  .await;
+                let _ =
+                  sender
+                    .send(
+                      NativeAuthEvent::QrCode(
+                        code
+                      )
+                    )
+                    .await;
               }
             },
           );
       }
 
       NativeAuthMode::PairingCode(
-        phone,
+        phone
       ) => {
         let phone =
-          normalize_phone(&phone);
+          normalize_phone(
+            &phone
+          );
 
         if phone.is_empty() {
           return Err(
             WppError::Other(
               "phone number cannot be empty"
                 .to_string(),
-            ),
+            )
           );
         }
 
@@ -181,13 +185,14 @@ impl NativeClient {
                     .clone();
 
                 async move {
-                  let _ = sender
-                    .send(
-                      NativeAuthEvent::PairCode(
-                        code,
-                      ),
-                    )
-                    .await;
+                  let _ =
+                    sender
+                      .send(
+                        NativeAuthEvent::PairCode(
+                          code
+                        )
+                      )
+                      .await;
                 }
               },
             )
@@ -198,23 +203,29 @@ impl NativeClient {
                     .clone();
 
                 async move {
-                  let _ = sender
-                    .send(
-                      NativeAuthEvent::PairCodeError(
-                        format!("{error:?}"),
-                      ),
-                    )
-                    .await;
+                  let _ =
+                    sender
+                      .send(
+                        NativeAuthEvent::PairCodeError(
+                          format!(
+                            "{error:?}"
+                          )
+                        )
+                      )
+                      .await;
                 }
               },
             )
             .with_pair_code(
               PairCodeOptions {
-                phone_number: phone,
-                show_push_notification: true,
-                custom_code: None,
+                phone_number:
+                  phone,
+                show_push_notification:
+                  true,
+                custom_code:
+                  None,
                 ..Default::default()
-              },
+              }
             );
       }
     }
@@ -227,7 +238,7 @@ impl NativeClient {
           WppError::Other(
             format!(
               "failed to build native WhatsApp client: {error}"
-            ),
+            )
           )
         })?;
 
@@ -238,9 +249,10 @@ impl NativeClient {
       handle.client();
 
     let chat_store_subscription =
-      client.subscribe_handler(
-        chat_store.handler()
-      );
+      client
+        .subscribe_handler(
+          chat_store.handler()
+        );
 
     let client =
       handle.client();
@@ -248,46 +260,44 @@ impl NativeClient {
     Ok(Self {
       client,
       handle,
-      auth_receiver: receiver,
+      auth_receiver:
+        receiver,
       chat_store,
       chat_store_subscription,
     })
   }
 
-  /// Return whether whatsapp-rust considers this session authenticated.
   pub fn is_logged_in(
     &self,
   ) -> bool {
     self.client.is_logged_in()
   }
 
-  /// Wait until the native session is connected and authenticated.
   pub async fn wait_for_connected(
     &self,
     timeout: Duration,
   ) -> Result<(), WppError> {
     self
       .client
-      .wait_for_connected(timeout)
+      .wait_for_connected(
+        timeout
+      )
       .await
       .map_err(|error| {
         WppError::Other(
           format!(
             "native WhatsApp connection failed: {error}"
-          ),
+          )
         )
       })
   }
 
-  /// Receive the next authentication event without blocking the caller
-  /// indefinitely beyond what the caller's own timeout allows.
   pub async fn next_auth_event(
     &mut self,
   ) -> Option<NativeAuthEvent> {
     self.auth_receiver.recv().await
   }
 
-  /// Return the authenticated phone number, when available.
   pub fn phone(
     &self,
   ) -> Option<String> {
@@ -298,19 +308,23 @@ impl NativeClient {
       jid.to_string();
 
     let user =
-      raw.split('@')
+      raw
+        .split('@')
         .next()
         .unwrap_or("");
 
     let user =
-      user.split(':')
+      user
+        .split(':')
         .next()
         .unwrap_or(user);
 
     let phone =
       user
         .chars()
-        .filter(|c| c.is_ascii_digit())
+        .filter(|c| {
+          c.is_ascii_digit()
+        })
         .collect::<String>();
 
     if phone.is_empty() {
@@ -320,27 +334,25 @@ impl NativeClient {
     }
   }
 
-  /// Return this device's WhatsApp push name.
   pub fn push_name(
     &self,
   ) -> String {
     self.client.push_name()
   }
 
-  /// Log out the native WhatsApp device.
   pub async fn logout(
     &self,
   ) {
     self.client.logout().await;
   }
 
-  /// Find a native chat by its exact JID.
   pub async fn get_chat(
     &self,
     chat_id: &str,
   ) -> Result<Option<Chat>, WppError> {
     let Ok(jid) =
-      chat_id.parse::<whatsapp_rust::Jid>()
+      chat_id
+        .parse::<whatsapp_rust::Jid>()
     else {
       return Ok(None);
     };
@@ -354,16 +366,16 @@ impl NativeClient {
           WppError::Other(
             format!(
               "failed to find native chat: {error}"
-            ),
+            )
           )
         })?;
 
     Ok(
-      entry.map(chat_from_entry)
+      entry
+        .map(chat_from_entry)
     )
   }
 
-  /// Find native chats for an exact phone number.
   pub async fn find_chats_by_phone(
     &self,
     phone: &str,
@@ -389,7 +401,7 @@ impl NativeClient {
           WppError::Other(
             format!(
               "failed to find native chat by phone: {error}"
-            ),
+            )
           )
         })?;
 
@@ -414,7 +426,7 @@ impl NativeClient {
           WppError::Other(
             format!(
               "invalid native chat id `{chat_id}`: {error}"
-            ),
+            )
           )
         })?;
 
@@ -444,7 +456,7 @@ impl NativeClient {
           WppError::Other(
             format!(
               "failed to get native chat history: {error}"
-            ),
+            )
           )
         })?;
 
@@ -454,7 +466,9 @@ impl NativeClient {
       self
         .client
         .pn()
-        .map(|jid| jid.to_string())
+        .map(|jid| {
+          jid.to_string()
+        })
         .unwrap_or_default();
 
     Ok(
@@ -468,6 +482,92 @@ impl NativeClient {
         })
         .collect()
     )
+  }
+
+  pub async fn list_persisted_messages(
+    &self,
+    chat_id: &str,
+    limit: usize,
+    before: Option<&str>,
+  ) -> Result<MessagePage, WppError> {
+    if limit == 0 {
+      return Ok(MessagePage {
+        messages: Vec::new(),
+        next_cursor: None,
+      });
+    }
+
+    let jid =
+      chat_id
+        .parse::<whatsapp_rust::Jid>()
+        .map_err(|error| {
+          WppError::Other(
+            format!(
+              "invalid native chat id `{chat_id}`: {error}"
+            )
+          )
+        })?;
+
+    let before =
+      before
+        .map(parse_message_cursor)
+        .transpose()?;
+
+    let limit =
+      limit.min(100);
+
+    let mut stored =
+      self
+        .chat_store
+        .messages(
+          &jid,
+          before,
+          limit as i64,
+        )
+        .await
+        .map_err(|error| {
+          WppError::Other(
+            format!(
+              "failed to get native persisted messages: {error}"
+            )
+          )
+        })?;
+
+    let next_cursor =
+      if stored.len() == limit {
+        stored
+          .last()
+          .map(encode_message_cursor)
+      } else {
+        None
+      };
+
+    stored.reverse();
+
+    let own_jid =
+      self
+        .client
+        .pn()
+        .map(|jid| {
+          jid.to_string()
+        })
+        .unwrap_or_default();
+
+    let messages =
+      stored
+        .into_iter()
+        .map(|message| {
+          message_from_stored(
+            message,
+            &own_jid,
+          )
+        })
+        .collect();
+
+    Ok(MessagePage {
+      messages,
+      next_cursor,
+    })
   }
 
   pub async fn send_text(
@@ -538,10 +638,6 @@ impl NativeClient {
     Ok(())
   }
 
-  /// List chats materialized by the native chat store.
-  ///
-  /// The application abstraction still exposes offset pagination, so this
-  /// adapter translates it into the chat store's cursor-based pagination.
   pub async fn list_chats(
     &self,
     limit: usize,
@@ -558,7 +654,9 @@ impl NativeClient {
       0usize;
 
     let mut chats =
-      Vec::with_capacity(limit);
+      Vec::with_capacity(
+        limit
+      );
 
     loop {
       let page =
@@ -574,7 +672,7 @@ impl NativeClient {
             WppError::Other(
               format!(
                 "failed to list native chats: {error}"
-              ),
+              )
             )
           })?;
 
@@ -603,10 +701,14 @@ impl NativeClient {
 
       if start < page_len {
         for entry in
-          page.into_iter().skip(start)
+          page
+            .into_iter()
+            .skip(start)
         {
           chats.push(
-            chat_from_entry(entry)
+            chat_from_entry(
+              entry
+            )
           );
 
           if chats.len() >= limit {
@@ -637,8 +739,9 @@ impl NativeClient {
     Ok(chats)
   }
 
-  /// Gracefully stop the background bot and flush native state.
-  pub async fn shutdown(self) {
+  pub async fn shutdown(
+    self,
+  ) {
     let NativeClient {
       client,
       handle,
@@ -647,7 +750,9 @@ impl NativeClient {
       chat_store_subscription,
     } = self;
 
-    drop(chat_store_subscription);
+    drop(
+      chat_store_subscription
+    );
     drop(chat_store);
     drop(auth_receiver);
     drop(client);
@@ -703,14 +808,18 @@ fn message_from_stored(
     from,
     to,
     body: stored.text,
-    kind: stored.kind
-      .as_str()
-      .to_string(),
+    kind:
+      stored.kind
+        .as_str()
+        .to_string(),
     direction,
     author,
-    timestamp: Some(
-      stored.timestamp.timestamp()
-    ),
+    timestamp:
+      Some(
+        stored
+          .timestamp
+          .timestamp()
+      ),
     status:
       message_status_as_str(
         stored.status
@@ -763,14 +872,18 @@ fn chat_from_entry(
     if entry.unread_count < 0 {
       1
     } else {
-      entry.unread_count
-        .min(u32::MAX as i32)
+      entry
+        .unread_count
+        .min(
+          u32::MAX as i32
+        )
     } as u32;
 
   Chat {
     id: jid.clone(),
     name,
-    is_group: entry.jid.is_group(),
+    is_group:
+      entry.jid.is_group(),
     unread_count,
     last_message:
       entry.last_message_preview,
@@ -782,6 +895,66 @@ fn chat_from_entry(
         })
         .unwrap_or(0),
   }
+}
+
+fn encode_message_cursor(
+  message: &StoredMessage,
+) -> String {
+  format!(
+    "{}:{}",
+    message
+      .timestamp
+      .timestamp_millis(),
+    message.seq,
+  )
+}
+
+fn parse_message_cursor(
+  cursor: &str,
+) -> Result<
+  MessageCursor,
+  WppError,
+> {
+  let (
+    timestamp_ms,
+    seq,
+  ) =
+    cursor
+      .rsplit_once(':')
+      .ok_or_else(|| {
+        WppError::Other(
+          format!(
+            "invalid native message cursor `{cursor}`"
+          )
+        )
+      })?;
+
+  let timestamp_ms =
+    timestamp_ms
+      .parse::<i64>()
+      .map_err(|error| {
+        WppError::Other(
+          format!(
+            "invalid native message cursor `{cursor}`: {error}"
+          )
+        )
+      })?;
+
+  let seq =
+    seq
+      .parse::<i64>()
+      .map_err(|error| {
+        WppError::Other(
+          format!(
+            "invalid native message cursor `{cursor}`: {error}"
+          )
+        )
+      })?;
+
+  Ok(MessageCursor {
+    timestamp_ms,
+    seq,
+  })
 }
 
 fn normalize_phone(
