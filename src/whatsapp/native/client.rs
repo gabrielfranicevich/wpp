@@ -494,18 +494,19 @@ impl NativeClient {
   }
 
   /// Gracefully stop the background bot and flush native state.
-  pub async fn shutdown(
-    self,
-  ) {
+  pub async fn shutdown(self) {
     let NativeClient {
+      client,
       handle,
+      auth_receiver,
+      chat_store,
       chat_store_subscription,
-      ..
     } = self;
 
-    drop(
-      chat_store_subscription
-    );
+    drop(chat_store_subscription);
+    drop(chat_store);
+    drop(auth_receiver);
+    drop(client);
 
     handle.shutdown().await;
   }

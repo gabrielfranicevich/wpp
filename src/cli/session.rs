@@ -34,57 +34,7 @@ pub async fn run(
 async fn list_sessions(
   config: &Config,
 ) -> Result<()> {
-  let has_openwa =
-    config.sessions.values().any(
-      |entry| {
-        entry.backend
-          == BackendKind::OpenWA
-      }
-    );
-
-  let native_entries =
-    config
-      .sessions
-      .values()
-      .filter(|entry| {
-        entry.backend
-          == BackendKind::Native
-      })
-      .collect::<Vec<_>>();
-
-  let openwa_sessions =
-    if has_openwa {
-      let client =
-        WhatsAppClient::openwa(
-          &config.base_url,
-          config.openwa_api_key(),
-        );
-
-      let mut sessions =
-        client.list_sessions()
-          .await?;
-
-      sessions.sort_by(|a, b| {
-        a.name
-          .cmp(&b.name)
-          .then_with(|| a.id.cmp(&b.id))
-      });
-
-      Some(sessions)
-    } else {
-      None
-    };
-
-  let has_openwa_sessions =
-    openwa_sessions
-      .as_ref()
-      .is_some_and(
-        |sessions| !sessions.is_empty()
-      );
-
-  if !has_openwa_sessions
-    && native_entries.is_empty()
-  {
+  if config.sessions.is_empty() {
     println!(
       " {}",
       "No sessions.".dark_grey()
@@ -93,78 +43,43 @@ async fn list_sessions(
     return Ok(());
   }
 
-  if let Some(sessions) =
-    openwa_sessions
-  {
-    if !sessions.is_empty() {
-      println!();
-      println!(
-        " {}",
-        "OpenWA sessions:".bold()
-      );
+  let mut entries =
+    config
+      .sessions
+      .values()
+      .collect::<Vec<_>>();
 
-      println!();
-
-      println!(
-        "  {:<20} {:<16} {:<36} {:<17} {}",
-        "NAME".bold(),
-        "PHONE".bold(),
-        "ID".bold(),
-        "STATUS".bold(),
-        "WPP".bold(),
-      );
-
-      for session in
-        &sessions
-      {
-        print_session(
-          session,
-          config,
-        );
-      }
+  entries.sort_by_key(
+    |entry| {
+      entry
+        .aliases
+        .first()
+        .cloned()
+        .unwrap_or_default()
     }
-  }
+  );
 
-  if !native_entries.is_empty() {
-    let mut entries =
-      native_entries;
+  println!();
+  println!(
+    " {}",
+    "Sessions:".bold()
+  );
+  println!();
 
-    entries.sort_by_key(
-      |entry| {
-        entry
-          .aliases
-          .first()
-          .cloned()
-          .unwrap_or_default()
-      }
+  println!(
+    "  {:<20} {:<16} {:<36} {:<17} {}",
+    "NAME".bold(),
+    "PHONE".bold(),
+    "ID".bold(),
+    "STATUS".bold(),
+    "WPP".bold(),
+  );
+
+  for entry in entries {
+    print_saved_session(
+      entry,
+      config,
     );
-
-    println!();
-
-    println!(
-      " {}",
-      "Native sessions:".bold()
-    );
-
-    println!();
-
-    println!(
-      "  {:<20} {:<16} {:<36} {:<17} {}",
-      "NAME".bold(),
-      "PHONE".bold(),
-      "ID".bold(),
-      "STATUS".bold(),
-      "WPP".bold(),
-    );
-
-    for entry in
-      entries
-    {
-      print_native_session(
-        entry,
-        config,
-      );
-    }
   }
 
   println!();
@@ -182,43 +97,43 @@ async fn delete_session(
     let entry =
       entry.clone();
 
-    if entry.backend
-      == BackendKind::Native
-    {
-      return delete_native_session(
-        config,
-        &entry,
-      )
-      .await;
-    }
+    return match entry.backend {
+      BackendKind::Native =>
+        delete_native_session(
+          config,
+          &entry,
+        )
+        .await,
 
-    return delete_local_openwa_session(
-      config,
-      target,
-      &entry,
-    )
-    .await;
+      BackendKind::OpenWA =>
+        delete_local_openwa_session(
+          config,
+          target,
+          &entry,
+        )
+        .await,
+    };
   }
 
   if let Some(entry) =
     config.sessions.get(target).cloned()
   {
-    if entry.backend
-      == BackendKind::Native
-    {
-      return delete_native_session(
-        config,
-        &entry,
-      )
-      .await;
-    }
+    return match entry.backend {
+      BackendKind::Native =>
+        delete_native_session(
+          config,
+          &entry,
+        )
+        .await,
 
-    return delete_local_openwa_session(
-      config,
-      target,
-      &entry,
-    )
-    .await;
+      BackendKind::OpenWA =>
+        delete_local_openwa_session(
+          config,
+          target,
+          &entry,
+        )
+        .await,
+    };
   }
 
   let client =
@@ -419,7 +334,7 @@ async fn delete_remote_session(
 
   println!();
 
-  match client.logout(&session_id).await {
+  match client.logout(&session.id).await {
     Ok(_) => {
       println!(
         " {} Logged out {}",
@@ -438,12 +353,12 @@ async fn delete_remote_session(
   }
 
   client
-    .delete_session(&session_id)
+    .delete_session(&session.id)
     .await?;
 
   let removed =
     config.remove_sessions_by_id(
-      &session_id
+      &session.id
     );
 
   if !removed.is_empty() {
@@ -615,83 +530,14 @@ fn normalize_phone(
     .collect()
 }
 
-fn print_session(
-  session: &Session,
-  config: &Config,
-) {
-  let aliases =
-    aliases_for_session(
-      config,
-      &session.id
-    );
-
-  let is_active =
-    aliases.iter().any(
-      |alias| {
-        config
-          .active_session
-          .as_deref()
-          == Some(alias.as_str())
-      }
-    );
-
-  let marker =
-    if is_active {
-      "▸"
-        .green()
-        .bold()
-        .to_string()
-    } else {
-      " ".to_string()
-    };
-
-  let phone =
-    session
-      .phone
-      .as_deref()
-      .unwrap_or("-");
-
-  let status =
-    format_status(
-      &session.status
-    );
-
-  let wpp =
-    if aliases.is_empty() {
-      "unmanaged"
-        .dark_grey()
-        .to_string()
-    } else {
-      format!(
-        "{} {}",
-        "wpp:".dark_grey(),
-        aliases.join(", ")
-      )
-    };
-
-  println!(
-    " {marker} {:<20} {:<16} {:<36} {:<17} {}",
-    session.name,
-    phone,
-    session.id,
-    status,
-    wpp,
-  );
-}
-
-fn print_native_session(
+fn print_saved_session(
   entry: &SessionEntry,
   config: &Config,
 ) {
-  let aliases =
-    {
-      let mut aliases =
-        entry.aliases.clone();
+  let mut aliases =
+    entry.aliases.clone();
 
-      aliases.sort();
-
-      aliases
-    };
+  aliases.sort();
 
   let is_active =
     aliases.iter().any(
@@ -731,25 +577,31 @@ fn print_native_session(
       .as_deref()
       .unwrap_or("-");
 
-  let storage =
-    config.native_session_path(
-      &entry.id
-    );
-
   let status =
-    match storage {
-      Ok(path) if path.exists() =>
-        "saved"
-          .green()
-          .to_string(),
+    match entry.backend {
+      BackendKind::Native => {
+        match config.native_session_path(
+          &entry.id
+        ) {
+          Ok(path) if path.exists() =>
+            "saved"
+              .green()
+              .to_string(),
 
-      Ok(_) =>
-        "missing"
-          .yellow()
-          .to_string(),
+          Ok(_) =>
+            "missing"
+              .yellow()
+              .to_string(),
 
-      Err(_) =>
-        "unknown"
+          Err(_) =>
+            "unknown"
+              .dark_grey()
+              .to_string(),
+        }
+      }
+
+      BackendKind::OpenWA =>
+        "openwa"
           .dark_grey()
           .to_string(),
     };
@@ -775,61 +627,6 @@ fn print_native_session(
     status,
     wpp,
   );
-}
-
-fn aliases_for_session(
-  config: &Config,
-  session_id: &str,
-) -> Vec<String> {
-  let mut aliases =
-    config
-      .sessions
-      .get(session_id)
-      .map(
-        |entry| entry.aliases.clone()
-      )
-      .unwrap_or_default();
-
-  aliases.sort();
-
-  aliases
-}
-
-fn format_status(
-  status: &str,
-) -> String {
-  match status {
-    "ready" =>
-      status
-        .green()
-        .to_string(),
-
-    "failed" =>
-      status
-        .red()
-        .to_string(),
-
-    "disconnected" =>
-      status
-        .dark_grey()
-        .to_string(),
-
-    "initializing"
-    | "qr_ready"
-    | "authenticating"
-    | "action_required" =>
-      status
-        .yellow()
-        .to_string(),
-
-    "created" =>
-      status
-        .cyan()
-        .to_string(),
-
-    _ =>
-      status.to_string(),
-  }
 }
 
 fn remove_native_storage(
