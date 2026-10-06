@@ -426,10 +426,14 @@ impl WhatsAppClient {
           .await
       }
 
-      Backend::Native(_) => {
-        native_not_implemented(
-          "delete chat"
-        )
+      Backend::Native(
+        client
+      ) => {
+        client
+          .delete_chat(
+            chat_id
+          )
+          .await
       }
     }
   }
@@ -451,10 +455,14 @@ impl WhatsAppClient {
           .await
       }
 
-      Backend::Native(_) => {
-        native_not_implemented(
-          "block contact"
-        )
+      Backend::Native(
+        client
+      ) => {
+        client
+          .block_contact(
+            contact_id
+          )
+          .await
       }
     }
   }
@@ -476,10 +484,14 @@ impl WhatsAppClient {
           .await
       }
 
-      Backend::Native(_) => {
-        native_not_implemented(
-          "unblock contact"
-        )
+      Backend::Native(
+        client
+      ) => {
+        client
+          .unblock_contact(
+            contact_id
+          )
+          .await
       }
     }
   }
@@ -503,10 +515,15 @@ impl WhatsAppClient {
           .await
       }
 
-      Backend::Native(_) => {
-        native_not_implemented(
-          "archive chat"
-        )
+      Backend::Native(
+        client
+      ) => {
+        client
+          .archive_chat(
+            chat_id,
+            archive,
+          )
+          .await
       }
     }
   }
@@ -530,10 +547,15 @@ impl WhatsAppClient {
           .await
       }
 
-      Backend::Native(_) => {
-        native_not_implemented(
-          "pin chat"
-        )
+      Backend::Native(
+        client
+      ) => {
+        client
+          .pin_chat(
+            chat_id,
+            pin,
+          )
+          .await
       }
     }
   }
@@ -557,10 +579,15 @@ impl WhatsAppClient {
           .await
       }
 
-      Backend::Native(_) => {
-        native_not_implemented(
-          "mute chat"
-        )
+      Backend::Native(
+        client
+      ) => {
+        client
+          .mute_chat(
+            chat_id,
+            mute_until,
+          )
+          .await
       }
     }
   }
@@ -584,10 +611,15 @@ impl WhatsAppClient {
           .await
       }
 
-      Backend::Native(_) => {
-        native_not_implemented(
-          "mark chat as read"
-        )
+      Backend::Native(
+        client
+      ) => {
+        client
+          .mark_chat_read(
+            chat_id,
+            message_ids,
+          )
+          .await
       }
     }
   }
@@ -609,10 +641,14 @@ impl WhatsAppClient {
           .await
       }
 
-      Backend::Native(_) => {
-        native_not_implemented(
-          "mark chat as unread"
-        )
+      Backend::Native(
+        client
+      ) => {
+        client
+          .mark_chat_unread(
+            chat_id
+          )
+          .await
       }
     }
   }

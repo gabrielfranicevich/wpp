@@ -638,6 +638,330 @@ impl NativeClient {
     Ok(())
   }
 
+  pub async fn delete_chat(
+    &self,
+    chat_id: &str,
+  ) -> Result<(), WppError> {
+    let jid =
+      chat_id
+        .parse::<whatsapp_rust::Jid>()
+        .map_err(|error| {
+          WppError::Other(
+            format!(
+              "invalid native chat id `{chat_id}`: {error}"
+            )
+          )
+        })?;
+
+    self
+      .client
+      .chat_actions()
+      .delete_chat(
+        &jid,
+        true,
+        None,
+      )
+      .await
+      .map_err(|error| {
+        WppError::Other(
+          format!(
+            "failed to delete native chat: {error}"
+          )
+        )
+      })
+  }
+
+  pub async fn block_contact(
+    &self,
+    contact_id: &str,
+  ) -> Result<(), WppError> {
+    let jid =
+      contact_id
+        .parse::<whatsapp_rust::Jid>()
+        .map_err(|error| {
+          WppError::Other(
+            format!(
+              "invalid native contact id `{contact_id}`: {error}"
+            )
+          )
+        })?;
+
+    self
+      .client
+      .blocking()
+      .block(&jid)
+      .await
+      .map_err(|error| {
+        WppError::Other(
+          format!(
+            "failed to block native contact: {error}"
+          )
+        )
+      })
+  }
+
+  pub async fn unblock_contact(
+    &self,
+    contact_id: &str,
+  ) -> Result<(), WppError> {
+    let jid =
+      contact_id
+        .parse::<whatsapp_rust::Jid>()
+        .map_err(|error| {
+          WppError::Other(
+            format!(
+              "invalid native contact id `{contact_id}`: {error}"
+            )
+          )
+        })?;
+
+    self
+      .client
+      .blocking()
+      .unblock(&jid)
+      .await
+      .map_err(|error| {
+        WppError::Other(
+          format!(
+            "failed to unblock native contact: {error}"
+          )
+        )
+      })
+  }
+
+  pub async fn archive_chat(
+    &self,
+    chat_id: &str,
+    archive: bool,
+  ) -> Result<(), WppError> {
+    let jid =
+      chat_id
+        .parse::<whatsapp_rust::Jid>()
+        .map_err(|error| {
+          WppError::Other(
+            format!(
+              "invalid native chat id `{chat_id}`: {error}"
+            )
+          )
+        })?;
+
+    let result =
+      if archive {
+        self
+          .client
+          .chat_actions()
+          .archive_chat(
+            &jid,
+            None,
+          )
+          .await
+      } else {
+        self
+          .client
+          .chat_actions()
+          .unarchive_chat(
+            &jid,
+            None,
+          )
+          .await
+      };
+
+    result
+      .map_err(|error| {
+        WppError::Other(
+          format!(
+            "failed to {}native chat: {error}",
+            if archive {
+              "archive "
+            } else {
+              "unarchive "
+            }
+          )
+        )
+      })
+  }
+
+  pub async fn pin_chat(
+    &self,
+    chat_id: &str,
+    pin: bool,
+  ) -> Result<(), WppError> {
+    let jid =
+      chat_id
+        .parse::<whatsapp_rust::Jid>()
+        .map_err(|error| {
+          WppError::Other(
+            format!(
+              "invalid native chat id `{chat_id}`: {error}"
+            )
+          )
+        })?;
+
+    let result =
+      if pin {
+        self
+          .client
+          .chat_actions()
+          .pin_chat(
+            &jid
+          )
+          .await
+      } else {
+        self
+          .client
+          .chat_actions()
+          .unpin_chat(
+            &jid
+          )
+          .await
+      };
+
+    result
+      .map_err(|error| {
+        WppError::Other(
+          format!(
+            "failed to {}native chat: {error}",
+            if pin {
+              "pin "
+            } else {
+              "unpin "
+            }
+          )
+        )
+      })
+  }
+
+  pub async fn mute_chat(
+    &self,
+    chat_id: &str,
+    mute_until: Option<i64>,
+  ) -> Result<(), WppError> {
+    let jid =
+      chat_id
+        .parse::<whatsapp_rust::Jid>()
+        .map_err(|error| {
+          WppError::Other(
+            format!(
+              "invalid native chat id `{chat_id}`: {error}"
+            )
+          )
+        })?;
+
+    let result =
+      match mute_until {
+        Some(0) => {
+          self
+            .client
+            .chat_actions()
+            .mute_chat(
+              &jid
+            )
+            .await
+        }
+
+        Some(mute_end_timestamp_ms) => {
+          self
+            .client
+            .chat_actions()
+            .mute_chat_until(
+              &jid,
+              mute_end_timestamp_ms,
+            )
+            .await
+        }
+
+        None => {
+          self
+            .client
+            .chat_actions()
+            .unmute_chat(
+              &jid
+            )
+            .await
+        }
+      };
+
+    result
+      .map_err(|error| {
+        WppError::Other(
+          format!(
+            "failed to {}native chat: {error}",
+            match mute_until {
+              Some(_) => "mute ",
+              None => "unmute ",
+            }
+          )
+        )
+      })
+  }
+
+  pub async fn mark_chat_read(
+    &self,
+    chat_id: &str,
+    _message_ids: &[String],
+  ) -> Result<(), WppError> {
+    let jid =
+      chat_id
+        .parse::<whatsapp_rust::Jid>()
+        .map_err(|error| {
+          WppError::Other(
+            format!(
+              "invalid native chat id `{chat_id}`: {error}"
+            )
+          )
+        })?;
+
+    self
+      .client
+      .chat_actions()
+      .mark_chat_as_read(
+        &jid,
+        true,
+        None,
+      )
+      .await
+      .map_err(|error| {
+        WppError::Other(
+          format!(
+            "failed to mark native chat as read: {error}"
+          )
+        )
+      })
+  }
+
+  pub async fn mark_chat_unread(
+    &self,
+    chat_id: &str,
+  ) -> Result<(), WppError> {
+    let jid =
+      chat_id
+        .parse::<whatsapp_rust::Jid>()
+        .map_err(|error| {
+          WppError::Other(
+            format!(
+              "invalid native chat id `{chat_id}`: {error}"
+            )
+          )
+        })?;
+
+    self
+      .client
+      .chat_actions()
+      .mark_chat_as_read(
+        &jid,
+        false,
+        None,
+      )
+      .await
+      .map_err(|error| {
+        WppError::Other(
+          format!(
+            "failed to mark native chat as unread: {error}"
+          )
+        )
+      })
+  }
+
   pub async fn list_chats(
     &self,
     limit: usize,
