@@ -1,3 +1,4 @@
+mod chats;
 mod client;
 mod realtime;
 
