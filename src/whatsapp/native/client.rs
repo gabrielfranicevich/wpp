@@ -9,6 +9,16 @@ use whatsapp_rust::bot::{
 };
 use whatsapp_rust::pair_code::PairCodeOptions;
 use whatsapp_rust::store::SqliteStore;
+use whatsapp_rust::wacore::types::events::Subscription;
+use whatsapp_rust::wacore_binary::JidExt;
+use whatsapp_rust_chat_store::{
+  ChatCursor,
+  ChatEntry,
+  ChatStore,
+};
+
+use crate::error::WppError;
+use crate::whatsapp::models::Chat;
 
 /// Authentication behavior requested when opening
 /// a native WhatsApp session.
@@ -36,6 +46,8 @@ pub enum NativeAuthEvent {
   PairCodeError(String),
 }
 
+const CHAT_PAGE_SIZE: i64 = 1000;
+
 /// Native WhatsApp transport backed by `whatsapp-rust`.
 ///
 /// This adapter owns both the whatsapp-rust client and the background
@@ -44,6 +56,8 @@ pub struct NativeClient {
   client: Arc<whatsapp_rust::Client>,
   handle: BotHandle,
   auth_receiver: mpsc::Receiver<NativeAuthEvent>,
+  chat_store: Arc<ChatStore>,
+  chat_store_subscription: Subscription,
 }
 
 impl NativeClient {
@@ -54,13 +68,13 @@ impl NativeClient {
   pub async fn open(
     storage_path: &Path,
     auth_mode: NativeAuthMode,
-  ) -> Result<Self, crate::error::WppError> {
+  ) -> Result<Self, WppError> {
     if let Some(parent) =
       storage_path.parent()
     {
       std::fs::create_dir_all(parent)
         .map_err(|error| {
-          crate::error::WppError::Other(
+          WppError::Other(
             format!(
               "failed to create native session directory: {error}"
             ),
@@ -77,9 +91,20 @@ impl NativeClient {
       SqliteStore::new(&database_url)
         .await
         .map_err(|error| {
-          crate::error::WppError::Other(
+          WppError::Other(
             format!(
               "failed to open native WhatsApp storage: {error}"
+            ),
+          )
+        })?;
+
+    let chat_store =
+      ChatStore::new(&backend)
+        .await
+        .map_err(|error| {
+          WppError::Other(
+            format!(
+              "failed to open native chat store: {error}"
             ),
           )
         })?;
@@ -127,7 +152,7 @@ impl NativeClient {
 
         if phone.is_empty() {
           return Err(
-            crate::error::WppError::Other(
+            WppError::Other(
               "phone number cannot be empty"
                 .to_string(),
             ),
@@ -192,7 +217,7 @@ impl NativeClient {
         .build()
         .await
         .map_err(|error| {
-          crate::error::WppError::Other(
+          WppError::Other(
             format!(
               "failed to build native WhatsApp client: {error}"
             ),
@@ -205,10 +230,20 @@ impl NativeClient {
     let client =
       handle.client();
 
+    let chat_store_subscription =
+      client.subscribe_handler(
+        chat_store.handler()
+      );
+
+    let client =
+      handle.client();
+
     Ok(Self {
       client,
       handle,
       auth_receiver: receiver,
+      chat_store,
+      chat_store_subscription,
     })
   }
 
@@ -221,13 +256,13 @@ impl NativeClient {
   pub async fn wait_for_connected(
     &self,
     timeout: Duration,
-  ) -> Result<(), crate::error::WppError> {
+  ) -> Result<(), WppError> {
     self
       .client
       .wait_for_connected(timeout)
       .await
       .map_err(|error| {
-        crate::error::WppError::Other(
+        WppError::Other(
           format!(
             "native WhatsApp connection failed: {error}"
           ),
@@ -284,9 +319,159 @@ impl NativeClient {
     self.client.logout().await;
   }
 
+  /// List chats materialized by the native chat store.
+  ///
+  /// The application abstraction still exposes offset pagination, so this
+  /// adapter translates it into the chat store's cursor-based pagination.
+  pub async fn list_chats(
+    &self,
+    limit: usize,
+    offset: usize,
+  ) -> Result<Vec<Chat>, WppError> {
+    if limit == 0 {
+      return Ok(Vec::new());
+    }
+
+    let mut cursor =
+      None;
+
+    let mut skipped =
+      0usize;
+
+    let mut chats =
+      Vec::with_capacity(limit);
+
+    loop {
+      let page =
+        self
+          .chat_store
+          .chats_page(
+            true,
+            cursor,
+            CHAT_PAGE_SIZE,
+          )
+          .await
+          .map_err(|error| {
+            WppError::Other(
+              format!(
+                "failed to list native chats: {error}"
+              ),
+            )
+          })?;
+
+      if page.is_empty() {
+        break;
+      }
+
+      let page_len =
+        page.len();
+
+      let Some(last_chat) =
+        page.last()
+      else {
+        break;
+      };
+
+      let next_cursor =
+        ChatCursor::from(
+          last_chat
+        );
+
+      let start =
+        offset.saturating_sub(
+          skipped
+        );
+
+      if start < page_len {
+        for entry in
+          page.into_iter().skip(start)
+        {
+          chats.push(
+            chat_from_entry(entry)
+          );
+
+          if chats.len() >= limit {
+            return Ok(chats);
+          }
+        }
+
+        skipped +=
+          page_len;
+
+        cursor =
+          Some(next_cursor);
+      } else {
+        skipped +=
+          page_len;
+
+        cursor =
+          Some(next_cursor);
+      }
+
+      if page_len
+        < CHAT_PAGE_SIZE as usize
+      {
+        break;
+      }
+    }
+
+    Ok(chats)
+  }
+
   /// Gracefully stop the background bot and flush native state.
   pub async fn shutdown(self) {
-    self.handle.shutdown().await;
+    let NativeClient {
+      handle,
+      chat_store_subscription,
+      ..
+    } = self;
+
+    drop(
+      chat_store_subscription
+    );
+
+    handle.shutdown().await;
+  }
+}
+
+fn chat_from_entry(
+  entry: ChatEntry,
+) -> Chat {
+  let jid =
+    entry.jid.to_string();
+
+  let name =
+    entry
+      .name
+      .filter(|name| {
+        !name.trim().is_empty()
+      })
+      .unwrap_or_else(
+        || jid.clone()
+      );
+
+  let unread_count =
+    if entry.unread_count < 0 {
+      1
+    } else {
+      entry.unread_count
+        .min(u32::MAX as i32)
+    } as u32;
+
+  Chat {
+    id: jid.clone(),
+    name,
+    is_group: entry.jid.is_group(),
+    unread_count,
+    last_message:
+      entry.last_message_preview,
+    timestamp:
+      entry
+        .last_message_at
+        .map(|timestamp| {
+          timestamp.timestamp()
+        })
+        .unwrap_or(0),
   }
 }
 

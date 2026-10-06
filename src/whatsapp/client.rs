@@ -213,10 +213,13 @@ impl WhatsAppClient {
           .await
       }
 
-      Backend::Native(_) => {
-        native_not_implemented(
-          "list chats"
-        )
+      Backend::Native(client) => {
+        client
+          .list_chats(
+            limit,
+            offset,
+          )
+          .await
       }
     }
   }

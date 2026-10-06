@@ -23,6 +23,8 @@ futures-util = "0.3"
 rust_socketio = { version = "0.6", features = ["async"] }
 rusqlite = { version = "0.39.0", features = ["bundled"] }
 whatsapp-rust = {
+  git = "https://github.com/oxidezap/whatsapp-rust",
+  rev = "f8165f2",
   version = "0.7",
   default-features = false,
   features = [
@@ -33,4 +35,10 @@ whatsapp-rust = {
     "tokio-transport",
     "ureq-client",
   ],
+}
+
+whatsapp-rust-chat-store = {
+  git = "https://github.com/oxidezap/whatsapp-rust",
+  rev = "f8165f2",
+  version = "0.1.0",
 }
