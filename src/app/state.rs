@@ -4,10 +4,6 @@ use crate::app::config::{
   SessionEntry,
 };
 use crate::whatsapp::client::WhatsAppClient;
-use crate::whatsapp::native::{
-  NativeAuthMode,
-  NativeClient,
-};
 
 /// The session selected by `wpp switch` or created by `wpp login`.
 #[derive(Debug, Clone)]
@@ -53,14 +49,10 @@ impl AppContext {
             &entry.id
           )?;
 
-        let client =
-          NativeClient::open(
-            &path,
-            NativeAuthMode::None,
-          )
-          .await?;
-
-        WhatsAppClient::native(client)
+        WhatsAppClient::open_native(
+          &path
+        )
+        .await?
       }
     };
 

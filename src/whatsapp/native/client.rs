@@ -279,6 +279,11 @@ impl NativeClient {
     self.client.push_name()
   }
 
+  /// Log out the native WhatsApp device.
+  pub async fn logout(&self) {
+    self.client.logout().await;
+  }
+
   /// Gracefully stop the background bot and flush native state.
   pub async fn shutdown(self) {
     self.handle.shutdown().await;

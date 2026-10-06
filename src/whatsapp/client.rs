@@ -1,14 +1,17 @@
+use std::path::Path;
+
 use crate::error::WppError;
 use crate::whatsapp::models::{
   Chat,
   Message,
   MessagePage,
-  PairingCodeResponse,
-  QrCodeResponse,
   RealtimeEvent,
   Session,
 };
-use crate::whatsapp::native::NativeClient;
+use crate::whatsapp::native::{
+  NativeAuthMode,
+  NativeClient,
+};
 use crate::whatsapp::openwa::client::{
   OpenWAClient,
   OpenWARealtimeListener,
@@ -98,57 +101,28 @@ impl WhatsAppClient {
     }
   }
 
-  pub async fn create_session(
-    &self,
-    name: &str,
-  ) -> Result<Session, WppError> {
-    match &self.backend {
-      Backend::OpenWA(client) => {
-        client.create_session(name).await
-      }
+  /// Open a persisted native WhatsApp session without
+  /// requesting a new authentication flow.
+  pub async fn open_native(
+    storage_path: &Path,
+  ) -> Result<Self, WppError> {
+    let client =
+      NativeClient::open(
+        storage_path,
+        NativeAuthMode::None,
+      )
+      .await?;
 
-      Backend::Native(_) => {
-        native_not_implemented(
-          "create session"
-        )
-      }
-    }
+    Ok(Self::native(client))
   }
 
-  pub async fn start_session(
-    &self,
-    session_id: &str,
-  ) -> Result<Session, WppError> {
-    match &self.backend {
-      Backend::OpenWA(client) => {
-        client
-          .start_session(session_id)
-          .await
-      }
+  /// Gracefully shut down the underlying backend.
+  pub async fn shutdown(self) {
+    match self.backend {
+      Backend::OpenWA(_) => {}
 
-      Backend::Native(_) => {
-        native_not_implemented(
-          "start session"
-        )
-      }
-    }
-  }
-
-  pub async fn get_session(
-    &self,
-    session_id: &str,
-  ) -> Result<Session, WppError> {
-    match &self.backend {
-      Backend::OpenWA(client) => {
-        client
-          .get_session(session_id)
-          .await
-      }
-
-      Backend::Native(_) => {
-        native_not_implemented(
-          "get session"
-        )
+      Backend::Native(client) => {
+        client.shutdown().await;
       }
     }
   }
@@ -197,50 +171,27 @@ impl WhatsAppClient {
         client.logout(session_id).await
       }
 
-      Backend::Native(_) => {
-        native_not_implemented(
-          "logout"
-        )
-      }
-    }
-  }
+      Backend::Native(client) => {
+        client.logout().await;
 
-  pub async fn get_qr(
-    &self,
-    session_id: &str,
-  ) -> Result<QrCodeResponse, WppError> {
-    match &self.backend {
-      Backend::OpenWA(client) => {
-        client.get_qr(session_id).await
-      }
+        let push_name =
+          client.push_name();
 
-      Backend::Native(_) => {
-        native_not_implemented(
-          "get QR code"
-        )
-      }
-    }
-  }
-
-  pub async fn request_pairing_code(
-    &self,
-    session_id: &str,
-    phone: &str,
-  ) -> Result<PairingCodeResponse, WppError> {
-    match &self.backend {
-      Backend::OpenWA(client) => {
-        client
-          .request_pairing_code(
-            session_id,
-            phone,
-          )
-          .await
-      }
-
-      Backend::Native(_) => {
-        native_not_implemented(
-          "request pairing code"
-        )
+        Ok(Session {
+          id: session_id.to_string(),
+          name: if push_name.trim().is_empty() {
+            session_id.to_string()
+          } else {
+            push_name.clone()
+          },
+          status: "logged_out".to_string(),
+          phone: client.phone(),
+          push_name: if push_name.trim().is_empty() {
+            None
+          } else {
+            Some(push_name)
+          },
+        })
       }
     }
   }

@@ -1,44 +1,150 @@
-use std::collections::HashSet;
+use std::path::Path;
 
 use anyhow::{bail, Result};
 use crossterm::style::Stylize;
 
-use crate::app::config::Config;
+use crate::app::config::{
+  BackendKind,
+  Config,
+  SessionEntry,
+};
 use crate::whatsapp::client::WhatsAppClient;
 use crate::whatsapp::models::Session;
 
-/// `wpp session`
-///
-/// - No argument: list every OpenWA session and mark which
-///  ones are known locally by wpp.
-/// - `-D TARGET`: attempt logout and then delete the
-///  selected OpenWA session.
-///
-/// If TARGET refers to a local alias whose OpenWA session no
-/// longer exists, only the stale local reference is removed.
-pub async fn run(delete: Option<String>) -> Result<()> {
-  let mut config = Config::load()?;
-
-  let client = WhatsAppClient::openwa(&config.base_url, config.openwa_api_key());
+pub async fn run(
+  delete: Option<String>,
+) -> Result<()> {
+  let mut config =
+    Config::load()?;
 
   match delete {
-    Some(target) => delete_session(&mut config, &client, &target).await,
+    Some(target) =>
+      delete_session(
+        &mut config,
+        &target,
+      )
+      .await,
 
-    None => list_sessions(&config, &client).await,
+    None =>
+      list_sessions(&config)
+        .await,
   }
 }
 
-async fn list_sessions(config: &Config, client: &WhatsAppClient) -> Result<()> {
-  let mut sessions = client.list_sessions().await?;
+async fn list_sessions(
+  config: &Config,
+) -> Result<()> {
+  let has_openwa =
+    config.sessions.values().any(
+      |entry| {
+        entry.backend
+          == BackendKind::OpenWA
+      }
+    );
 
-  sessions.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.id.cmp(&b.id)));
+  let native_entries =
+    config
+      .sessions
+      .values()
+      .filter(|entry| {
+        entry.backend
+          == BackendKind::Native
+      })
+      .collect::<Vec<_>>();
 
-  println!();
+  let openwa_sessions =
+    if has_openwa {
+      let client =
+        WhatsAppClient::openwa(
+          &config.base_url,
+          config.openwa_api_key(),
+        );
 
-  if sessions.is_empty() {
-    println!(" {}", "No OpenWA sessions.".dark_grey());
-  } else {
-    println!(" {}", "OpenWA sessions:".bold());
+      let mut sessions =
+        client.list_sessions()
+          .await?;
+
+      sessions.sort_by(|a, b| {
+        a.name
+          .cmp(&b.name)
+          .then_with(|| a.id.cmp(&b.id))
+      });
+
+      Some(sessions)
+    } else {
+      None
+    };
+
+  let has_openwa_sessions =
+    openwa_sessions
+      .as_ref()
+      .is_some_and(
+        |sessions| !sessions.is_empty()
+      );
+
+  if !has_openwa_sessions
+    && native_entries.is_empty()
+  {
+    println!(
+      " {}",
+      "No sessions.".dark_grey()
+    );
+
+    return Ok(());
+  }
+
+  if let Some(sessions) =
+    openwa_sessions
+  {
+    if !sessions.is_empty() {
+      println!();
+      println!(
+        " {}",
+        "OpenWA sessions:".bold()
+      );
+
+      println!();
+
+      println!(
+        "  {:<20} {:<16} {:<36} {:<17} {}",
+        "NAME".bold(),
+        "PHONE".bold(),
+        "ID".bold(),
+        "STATUS".bold(),
+        "WPP".bold(),
+      );
+
+      for session in
+        &sessions
+      {
+        print_session(
+          session,
+          config,
+        );
+      }
+    }
+  }
+
+  if !native_entries.is_empty() {
+    let mut entries =
+      native_entries;
+
+    entries.sort_by_key(
+      |entry| {
+        entry
+          .aliases
+          .first()
+          .cloned()
+          .unwrap_or_default()
+      }
+    );
+
+    println!();
+
+    println!(
+      " {}",
+      "Native sessions:".bold()
+    );
 
     println!();
 
@@ -51,8 +157,13 @@ async fn list_sessions(config: &Config, client: &WhatsAppClient) -> Result<()> {
       "WPP".bold(),
     );
 
-    for session in &sessions {
-      print_session(session, config);
+    for entry in
+      entries
+    {
+      print_native_session(
+        entry,
+        config,
+      );
     }
   }
 
@@ -61,62 +172,229 @@ async fn list_sessions(config: &Config, client: &WhatsAppClient) -> Result<()> {
   Ok(())
 }
 
-async fn delete_session(config: &mut Config, client: &WhatsAppClient, target: &str) -> Result<()> {
-  let sessions = client.list_sessions().await?;
+async fn delete_session(
+  config: &mut Config,
+  target: &str,
+) -> Result<()> {
+  if let Some((_, entry)) =
+    config.find_session(target)
+  {
+    let entry =
+      entry.clone();
 
-  /*
-   * First resolve TARGET through wpp's local aliases.
-   *
-   * This also lets us clean stale local references when the
-   * corresponding OpenWA session has already disappeared.
-   */
-  if let Some((_, entry)) = config.find_session(target) {
-    let session_id = entry.id.clone();
-
-    if let Some(session) = sessions.iter().find(|session| session.id == session_id) {
-      return delete_remote_session(config, client, session).await;
+    if entry.backend
+      == BackendKind::Native
+    {
+      return delete_native_session(
+        config,
+        &entry,
+      )
+      .await;
     }
 
-    return remove_stale_local_session(config, &session_id, target);
+    return delete_local_openwa_session(
+      config,
+      target,
+      &entry,
+    )
+    .await;
   }
 
-  /*
-   * TARGET may also be a raw OpenWA session ID.
-   */
-  if let Some(session) = sessions.iter().find(|session| session.id == target) {
-    return delete_remote_session(config, client, session).await;
-  }
-
-  /*
-   * TARGET may be a stale session ID still referenced locally.
-   */
-  if config.sessions.contains_key(target) {
-    return remove_stale_local_session(config, target, target);
-  }
-
-  /*
-   * Try OpenWA session name and exact phone match.
-   */
-  let session = resolve_remote_target(&sessions, target)?;
-
-  /*
-   * No remote session exists. TARGET may still refer to
-   * another form of local stale reference.
-   */
-  if session.is_none() {
-    if let Some((_, entry)) = config.find_session(target) {
-      let session_id = entry.id.clone();
-
-      return remove_stale_local_session(config, &session_id, target);
+  if let Some(entry) =
+    config.sessions.get(target).cloned()
+  {
+    if entry.backend
+      == BackendKind::Native
+    {
+      return delete_native_session(
+        config,
+        &entry,
+      )
+      .await;
     }
 
+    return delete_local_openwa_session(
+      config,
+      target,
+      &entry,
+    )
+    .await;
+  }
+
+  let client =
+    WhatsAppClient::openwa(
+      &config.base_url,
+      config.openwa_api_key(),
+    );
+
+  let sessions =
+    client.list_sessions().await?;
+
+  if let Some(session) =
+    sessions
+      .iter()
+      .find(|session| {
+        session.id == target
+      })
+  {
+    return delete_remote_session(
+      config,
+      &client,
+      session,
+    )
+    .await;
+  }
+
+  let session =
+    resolve_remote_target(
+      &sessions,
+      target,
+    )?;
+
+  let Some(session) =
+    session
+  else {
     bail!(
-   "No OpenWA session or local reference matching '{}'. Run `wpp session` to see available sessions.",
-   target
+      "No OpenWA session or local reference matching '{}'. \
+       Run `wpp session` to see available sessions.",
+      target
+    );
+  };
+
+  delete_remote_session(
+    config,
+    &client,
+    session,
+  )
+  .await
+}
+
+async fn delete_local_openwa_session(
+  config: &mut Config,
+  target: &str,
+  entry: &SessionEntry,
+) -> Result<()> {
+  let client =
+    WhatsAppClient::openwa(
+      &config.base_url,
+      config.openwa_api_key(),
+    );
+
+  let sessions =
+    client.list_sessions().await?;
+
+  let Some(session) =
+    sessions
+      .iter()
+      .find(|session| {
+        session.id == entry.id
+      })
+  else {
+    return remove_stale_local_openwa_session(
+      config,
+      &entry.id,
+      target,
+    );
+  };
+
+  delete_remote_session(
+    config,
+    &client,
+    session,
+  )
+  .await
+}
+
+async fn delete_native_session(
+  config: &mut Config,
+  entry: &SessionEntry,
+) -> Result<()> {
+  let session_id =
+    entry.id.clone();
+
+  let storage_path =
+    config.native_session_path(
+      &session_id
+    )?;
+
+  println!();
+
+  println!(
+    " {} Deleting native session {}...",
+    "→".cyan().bold(),
+    session_id.clone().bold(),
   );
+
+  println!();
+
+  if storage_path.exists() {
+    let client =
+      WhatsAppClient::open_native(
+        &storage_path
+      )
+      .await?;
+
+    let result =
+      client
+        .logout(&session_id)
+        .await;
+
+    client.shutdown().await;
+
+    result?;
   }
 
-  delete_remote_session(config, client, session.unwrap()).await
+  remove_native_storage(
+    &storage_path
+  )?;
+
+  let removed =
+    config.remove_sessions_by_id(
+      &session_id
+    );
+
+  if !removed.is_empty() {
+    config.save()?;
+  }
+
+  println!(
+    " {} Deleted native session {}",
+    "✓".green().bold(),
+    session_id.bold(),
+  );
+
+  println!(
+    " {} Removed native session storage.",
+    "✓".green().bold()
+  );
+
+  if removed.is_empty() {
+    println!(
+      " {} No local wpp aliases were associated with this session.",
+      "i".dark_grey()
+    );
+  } else {
+    let aliases =
+      removed
+        .into_iter()
+        .map(
+          |(alias, _)| alias
+        )
+        .collect::<Vec<_>>();
+
+    println!(
+      " {} Removed local alias{}: {}",
+      "✓".green().bold(),
+      if aliases.len() == 1 {
+        ""
+      } else {
+        "es"
+      },
+      aliases.join(", "),
+    );
+  }
+
+  Ok(())
 }
 
 async fn delete_remote_session(
@@ -124,9 +402,11 @@ async fn delete_remote_session(
   client: &WhatsAppClient,
   session: &Session,
 ) -> Result<()> {
-  let session_id = session.id.clone();
+  let session_id =
+    session.id.clone();
 
-  let session_name = session.name.clone();
+  let session_name =
+    session.name.clone();
 
   println!();
 
@@ -139,23 +419,32 @@ async fn delete_remote_session(
 
   println!();
 
-  // Logout is intentionally best-effort here.
-  //
-  // An inactive OpenWA session may reject logout,
-  // but we still want DELETE to clean up the session.
   match client.logout(&session_id).await {
     Ok(_) => {
-      println!(" {} Logged out {}", "✓".green().bold(), session_name);
+      println!(
+        " {} Logged out {}",
+        "✓".green().bold(),
+        session_name
+      );
     }
 
     Err(error) => {
-      eprintln!(" {} Logout skipped: {}", "!".yellow().bold(), error);
+      eprintln!(
+        " {} Logout skipped: {}",
+        "!".yellow().bold(),
+        error
+      );
     }
   }
 
-  client.delete_session(&session_id).await?;
+  client
+    .delete_session(&session_id)
+    .await?;
 
-  let removed = config.remove_sessions_by_id(&session_id);
+  let removed =
+    config.remove_sessions_by_id(
+      &session_id
+    );
 
   if !removed.is_empty() {
     config.save()?;
@@ -173,12 +462,22 @@ async fn delete_remote_session(
       "i".dark_grey()
     );
   } else {
-    let aliases: Vec<String> = removed.into_iter().map(|(alias, _)| alias).collect();
+    let aliases =
+      removed
+        .into_iter()
+        .map(
+          |(alias, _)| alias
+        )
+        .collect::<Vec<_>>();
 
     println!(
       " {} Removed local alias{}: {}",
       "✓".green().bold(),
-      if aliases.len() == 1 { "" } else { "es" },
+      if aliases.len() == 1 {
+        ""
+      } else {
+        "es"
+      },
       aliases.join(", "),
     );
   }
@@ -186,24 +485,38 @@ async fn delete_remote_session(
   Ok(())
 }
 
-fn remove_stale_local_session(config: &mut Config, session_id: &str, target: &str) -> Result<()> {
-  let removed = config.remove_sessions_by_id(session_id);
+fn remove_stale_local_openwa_session(
+  config: &mut Config,
+  session_id: &str,
+  target: &str,
+) -> Result<()> {
+  let removed =
+    config.remove_sessions_by_id(
+      session_id
+    );
 
   if removed.is_empty() {
     bail!(
-   "No local session reference matching '{}'. Run `wpp session` to see available sessions.",
-   target
-  );
+      "No local session reference matching '{}'. \
+       Run `wpp session` to see available sessions.",
+      target
+    );
   }
 
   config.save()?;
 
-  let aliases: Vec<String> = removed.into_iter().map(|(alias, _)| alias).collect();
+  let aliases =
+    removed
+      .into_iter()
+      .map(
+        |(alias, _)| alias
+      )
+      .collect::<Vec<_>>();
 
   println!();
 
   println!(
-    " {} Local reference '{}' points to a session that no longer exists in OpenWA.",
+    " {} Local reference '{}' points to an OpenWA session that no longer exists.",
     "→".yellow().bold(),
     target
   );
@@ -211,7 +524,11 @@ fn remove_stale_local_session(config: &mut Config, session_id: &str, target: &st
   println!(
     " {} Removed local alias{}: {}",
     "✓".green().bold(),
-    if aliases.len() == 1 { "" } else { "es" },
+    if aliases.len() == 1 {
+      ""
+    } else {
+      "es"
+    },
     aliases.join(", "),
   );
 
@@ -220,44 +537,62 @@ fn remove_stale_local_session(config: &mut Config, session_id: &str, target: &st
   Ok(())
 }
 
-fn resolve_remote_target<'a>(sessions: &'a [Session], target: &str) -> Result<Option<&'a Session>> {
-  /*
-   * OpenWA session name.
-   */
-  if let Some(session) = sessions.iter().find(|session| session.name == target) {
+fn resolve_remote_target<'a>(
+  sessions: &'a [Session],
+  target: &str,
+) -> Result<Option<&'a Session>> {
+  if let Some(session) =
+    sessions
+      .iter()
+      .find(|session| {
+        session.name == target
+      })
+  {
     return Ok(Some(session));
   }
 
-  /*
-   * Exact phone-number match.
-   */
-  let normalized_target = normalize_phone(target);
+  let normalized_target =
+    normalize_phone(target);
 
   if !normalized_target.is_empty() {
-    let phone_matches: Vec<&Session> = sessions
-      .iter()
-      .filter(|session| {
-        session
-          .phone
-          .as_deref()
-          .map(normalize_phone)
-          .is_some_and(|phone| phone == normalized_target)
-      })
-      .collect();
+    let phone_matches =
+      sessions
+        .iter()
+        .filter(|session| {
+          session
+            .phone
+            .as_deref()
+            .map(normalize_phone)
+            .is_some_and(
+              |phone| {
+                phone == normalized_target
+              }
+            )
+        })
+        .collect::<Vec<_>>();
 
     match phone_matches.len() {
       1 => {
-        return Ok(Some(phone_matches[0]));
+        return Ok(
+          Some(phone_matches[0])
+        );
       }
 
       0 => {}
 
       _ => {
-        let matches = phone_matches
-          .iter()
-          .map(|session| format!("{} ({})", session.name, session.id))
-          .collect::<Vec<_>>()
-          .join(", ");
+        let matches =
+          phone_matches
+            .iter()
+            .map(|session| {
+              format!(
+                "{} ({})",
+                session.name,
+                session.id
+              )
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
 
         bail!(
           "Multiple OpenWA sessions match phone '{}': {}",
@@ -271,113 +606,246 @@ fn resolve_remote_target<'a>(sessions: &'a [Session], target: &str) -> Result<Op
   Ok(None)
 }
 
-fn normalize_phone(value: &str) -> String {
-  value.chars().filter(|c| c.is_ascii_digit()).collect()
+fn normalize_phone(
+  value: &str,
+) -> String {
+  value
+    .chars()
+    .filter(|c| c.is_ascii_digit())
+    .collect()
 }
 
-fn print_session(session: &Session, config: &Config) {
-  let aliases = aliases_for_session(config, &session.id);
+fn print_session(
+  session: &Session,
+  config: &Config,
+) {
+  let aliases =
+    aliases_for_session(
+      config,
+      &session.id
+    );
 
-  let is_active = aliases
-    .iter()
-    .any(|alias| config.active_session.as_deref() == Some(alias.as_str()));
+  let is_active =
+    aliases.iter().any(
+      |alias| {
+        config
+          .active_session
+          .as_deref()
+          == Some(alias.as_str())
+      }
+    );
 
-  let marker = if is_active {
-    "▸".green().bold().to_string()
-  } else {
-    " ".to_string()
-  };
+  let marker =
+    if is_active {
+      "▸"
+        .green()
+        .bold()
+        .to_string()
+    } else {
+      " ".to_string()
+    };
 
-  let phone = session.phone.as_deref().unwrap_or("-");
+  let phone =
+    session
+      .phone
+      .as_deref()
+      .unwrap_or("-");
 
-  let status = format_status(&session.status);
+  let status =
+    format_status(
+      &session.status
+    );
 
-  let wpp = if aliases.is_empty() {
-    "unmanaged".dark_grey().to_string()
-  } else {
-    format!("{} {}", "wpp:".dark_grey(), aliases.join(", "))
-  };
+  let wpp =
+    if aliases.is_empty() {
+      "unmanaged"
+        .dark_grey()
+        .to_string()
+    } else {
+      format!(
+        "{} {}",
+        "wpp:".dark_grey(),
+        aliases.join(", ")
+      )
+    };
 
   println!(
     " {marker} {:<20} {:<16} {:<36} {:<17} {}",
-    session.name, phone, session.id, status, wpp,
+    session.name,
+    phone,
+    session.id,
+    status,
+    wpp,
   );
 }
 
-fn aliases_for_session(config: &Config, session_id: &str) -> Vec<String> {
-  let mut aliases = config
-    .sessions
-    .get(session_id)
-    .map(|entry| entry.aliases.clone())
-    .unwrap_or_default();
+fn print_native_session(
+  entry: &SessionEntry,
+  config: &Config,
+) {
+  let aliases =
+    {
+      let mut aliases =
+        entry.aliases.clone();
+
+      aliases.sort();
+
+      aliases
+    };
+
+  let is_active =
+    aliases.iter().any(
+      |alias| {
+        config
+          .active_session
+          .as_deref()
+          == Some(alias.as_str())
+      }
+    );
+
+  let marker =
+    if is_active {
+      "▸"
+        .green()
+        .bold()
+        .to_string()
+    } else {
+      " ".to_string()
+    };
+
+  let name =
+    entry
+      .push_name
+      .as_deref()
+      .filter(
+        |name| !name.trim().is_empty()
+      )
+      .or_else(
+        || aliases.first().map(String::as_str)
+      )
+      .unwrap_or(entry.id.as_str());
+
+  let phone =
+    entry
+      .phone
+      .as_deref()
+      .unwrap_or("-");
+
+  let storage =
+    config.native_session_path(
+      &entry.id
+    );
+
+  let status =
+    match storage {
+      Ok(path) if path.exists() =>
+        "saved"
+          .green()
+          .to_string(),
+
+      Ok(_) =>
+        "missing"
+          .yellow()
+          .to_string(),
+
+      Err(_) =>
+        "unknown"
+          .dark_grey()
+          .to_string(),
+    };
+
+  let wpp =
+    if aliases.is_empty() {
+      "unmanaged"
+        .dark_grey()
+        .to_string()
+    } else {
+      format!(
+        "{} {}",
+        "wpp:".dark_grey(),
+        aliases.join(", ")
+      )
+    };
+
+  println!(
+    " {marker} {:<20} {:<16} {:<36} {:<17} {}",
+    name,
+    phone,
+    entry.id,
+    status,
+    wpp,
+  );
+}
+
+fn aliases_for_session(
+  config: &Config,
+  session_id: &str,
+) -> Vec<String> {
+  let mut aliases =
+    config
+      .sessions
+      .get(session_id)
+      .map(
+        |entry| entry.aliases.clone()
+      )
+      .unwrap_or_default();
 
   aliases.sort();
 
   aliases
 }
 
-fn format_status(status: &str) -> String {
+fn format_status(
+  status: &str,
+) -> String {
   match status {
-    "ready" => status.green().to_string(),
+    "ready" =>
+      status
+        .green()
+        .to_string(),
 
-    "failed" => status.red().to_string(),
+    "failed" =>
+      status
+        .red()
+        .to_string(),
 
-    "disconnected" => status.dark_grey().to_string(),
+    "disconnected" =>
+      status
+        .dark_grey()
+        .to_string(),
 
-    "initializing" | "qr_ready" | "authenticating" | "action_required" => {
-      status.yellow().to_string()
-    }
+    "initializing"
+    | "qr_ready"
+    | "authenticating"
+    | "action_required" =>
+      status
+        .yellow()
+        .to_string(),
 
-    "created" => status.cyan().to_string(),
+    "created" =>
+      status
+        .cyan()
+        .to_string(),
 
-    _ => status.to_string(),
+    _ =>
+      status.to_string(),
   }
 }
 
-#[allow(dead_code)]
-fn print_local_only_sessions(config: &Config, openwa_sessions: &[Session]) {
-  let openwa_ids: HashSet<&str> = openwa_sessions
-    .iter()
-    .map(|session| session.id.as_str())
-    .collect();
+fn remove_native_storage(
+  path: &Path,
+) -> Result<()> {
+  match std::fs::remove_file(path) {
+    Ok(_) => Ok(()),
 
-  let mut local_only: Vec<_> = config
-    .sessions
-    .iter()
-    .filter(|(session_id, _)| !openwa_ids.contains(session_id.as_str()))
-    .collect();
-
-  if local_only.is_empty() {
-    return;
-  }
-
-  local_only.sort_by_key(|(_, entry)| entry.aliases.first().cloned().unwrap_or_default());
-
-  println!();
-
-  println!(" {}", "Local sessions not found in OpenWA:".yellow().bold());
-
-  println!();
-
-  for (session_id, entry) in local_only {
-    let active = if entry
-      .aliases
-      .iter()
-      .any(|alias| config.active_session.as_deref() == Some(alias.as_str()))
+    Err(error)
+      if error.kind()
+        == std::io::ErrorKind::NotFound =>
     {
-      " (active)"
-    } else {
-      ""
-    };
+      Ok(())
+    }
 
-    let aliases = if entry.aliases.is_empty() {
-      "-".to_string()
-    } else {
-      entry.aliases.join(", ")
-    };
-
-    let phone = entry.phone.as_deref().unwrap_or("-");
-
-    println!("  {:<28} {:<16} {}{}", aliases, phone, session_id, active);
+    Err(error) =>
+      Err(error.into()),
   }
 }

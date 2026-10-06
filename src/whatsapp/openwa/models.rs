@@ -103,21 +103,6 @@ pub struct MessageListResponse {
   pub messages: Vec<MessageRecord>,
 }
 
-/// QR code response from OpenWA.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct QrCodeResponse {
-  pub qr_code: String,
-}
-
-/// Pairing code response from OpenWA.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PairingCodeResponse {
-  #[serde(alias = "code", alias = "pairingCode")]
-  pub pairing_code: String,
-}
-
 /// Chat summary returned by OpenWA.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]

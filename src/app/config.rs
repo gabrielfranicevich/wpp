@@ -323,33 +323,6 @@ impl Config {
     })
   }
 
-  /// Find a session by an exact normalized phone number.
-  ///
-  /// Formatting characters such as `+`, spaces and `-` are ignored.
-  pub fn find_session_by_phone(
-    &self,
-    phone: &str,
-  ) -> Option<(&str, &SessionEntry)> {
-    let normalized = normalize_phone(phone);
-
-    if normalized.is_empty() {
-      return None;
-    }
-
-    self.sessions.values().find_map(|entry| {
-      let entry_phone = entry.phone.as_deref()?;
-
-      if normalize_phone(entry_phone) == normalized {
-        entry
-          .aliases
-          .first()
-          .map(|alias| (alias.as_str(), entry))
-      } else {
-        None
-      }
-    })
-  }
-
   fn find_by_alias<'a>(
     &'a self,
     query: &'a str,
@@ -370,34 +343,6 @@ impl Config {
         existing == alias
       })
     })
-  }
-
-  /// Add an alias to an existing session.
-  ///
-  /// Returns true if the alias was added.
-  pub fn add_alias(
-    &mut self,
-    session_id: &str,
-    alias: String,
-  ) -> anyhow::Result<bool> {
-    if self.alias_exists(&alias) {
-      return Ok(false);
-    }
-
-    let entry =
-      self.sessions.get_mut(session_id).ok_or_else(
-        || {
-          anyhow::anyhow!(
-            "Session '{}' is not known by wpp.",
-            session_id
-          )
-        },
-      )?;
-
-    entry.aliases.push(alias);
-    entry.aliases.sort();
-
-    Ok(true)
   }
 
   /// Insert a new session or update its metadata.
@@ -545,14 +490,6 @@ impl Config {
   }
 }
 
-/// Normalize a phone number for exact comparison.
-fn normalize_phone(value: &str) -> String {
-  value
-    .chars()
-    .filter(|c| c.is_ascii_digit())
-    .collect()
-}
-
 #[cfg(test)]
 mod tests {
   use super::{
@@ -631,52 +568,6 @@ mod tests {
   }
 
   #[test]
-  fn add_alias_associates_multiple_aliases_with_one_session() {
-    let mut config = Config::default();
-
-    config.sessions.insert(
-      "session-id".to_string(),
-      session("session-id", &["personal"]),
-    );
-
-    let added = config.add_alias(
-      "session-id",
-      "phone".to_string(),
-    );
-
-    assert!(added.is_ok());
-    assert!(added.unwrap());
-
-    let entry = &config.sessions["session-id"];
-
-    assert_eq!(
-      entry.aliases,
-      vec![
-        "personal".to_string(),
-        "phone".to_string(),
-      ]
-    );
-  }
-
-  #[test]
-  fn add_alias_rejects_duplicate_alias() {
-    let mut config = Config::default();
-
-    config.sessions.insert(
-      "session-id".to_string(),
-      session("session-id", &["personal"]),
-    );
-
-    let added = config.add_alias(
-      "session-id",
-      "personal".to_string(),
-    );
-
-    assert!(added.is_ok());
-    assert!(!added.unwrap());
-  }
-
-  #[test]
   fn find_session_finds_alias() {
     let mut config = Config::default();
 
@@ -697,54 +588,6 @@ mod tests {
 
     assert_eq!(alias, "phone");
     assert_eq!(entry.id, "session-id");
-  }
-
-  #[test]
-  fn find_session_by_phone_normalizes_formatting() {
-    let mut config = Config::default();
-
-    let mut entry =
-      session("session-id", &["personal"]);
-
-    entry.phone =
-      Some("+54 9 351-123-4567".to_string());
-
-    config
-      .sessions
-      .insert("session-id".to_string(), entry);
-
-    let result =
-      config.find_session_by_phone(
-        "5493511234567"
-      );
-
-    assert!(result.is_some());
-
-    let (alias, entry) = result.unwrap();
-
-    assert_eq!(alias, "personal");
-    assert_eq!(entry.id, "session-id");
-  }
-
-  #[test]
-  fn find_session_by_phone_does_not_match_partial_numbers() {
-    let mut config = Config::default();
-
-    let mut entry =
-      session("session-id", &["personal"]);
-
-    entry.phone =
-      Some("5493511234567".to_string());
-
-    config
-      .sessions
-      .insert("session-id".to_string(), entry);
-
-    assert!(
-      config
-        .find_session_by_phone("351")
-        .is_none()
-    );
   }
 
   #[test]

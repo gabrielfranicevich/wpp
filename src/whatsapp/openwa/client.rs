@@ -11,8 +11,6 @@ use super::models::{
   ChatHistoryMessageRecord,
   ChatSummary,
   MessageListResponse,
-  PairingCodeResponse as OpenWAPairingCodeResponse,
-  QrCodeResponse as OpenWAQrCodeResponse,
   RealtimeEnvelope,
   Session as OpenWASession,
 };
@@ -23,8 +21,6 @@ use crate::whatsapp::models::{
   Message,
   MessageDirection,
   MessagePage,
-  PairingCodeResponse,
-  QrCodeResponse,
   RealtimeEvent,
   Session,
 };
@@ -121,48 +117,6 @@ impl OpenWAClient {
     Err(WppError::Api { status, message })
   }
 
-  /// POST /api/sessions
-  pub async fn create_session(&self, name: &str) -> Result<Session, WppError> {
-    let builder = self
-      .http
-      .post(self.url("/sessions"))
-      .json(&serde_json::json!({
-        "name": name
-      }));
-
-    let response = self.request(builder).send().await?;
-
-    let session: OpenWASession = Self::check(response).await?.json().await?;
-
-    Ok(session.into())
-  }
-
-  /// POST /api/sessions/:id/start
-  pub async fn start_session(&self, session_id: &str) -> Result<Session, WppError> {
-    let builder = self
-      .http
-      .post(self.url(&format!("/sessions/{session_id}/start")));
-
-    let response = self.request(builder).send().await?;
-
-    let session: OpenWASession = Self::check(response).await?.json().await?;
-
-    Ok(session.into())
-  }
-
-  /// GET /api/sessions/:id
-  pub async fn get_session(&self, session_id: &str) -> Result<Session, WppError> {
-    let builder = self
-      .http
-      .get(self.url(&format!("/sessions/{session_id}")));
-
-    let response = self.request(builder).send().await?;
-
-    let session: OpenWASession = Self::check(response).await?.json().await?;
-
-    Ok(session.into())
-  }
-
   /// GET /api/sessions
   ///
   /// Fetch every session from OpenWA, following the API's
@@ -222,46 +176,6 @@ impl OpenWAClient {
     let session: OpenWASession = Self::check(response).await?.json().await?;
 
     Ok(session.into())
-  }
-
-  /// GET /api/sessions/:id/qr
-  pub async fn get_qr(&self, session_id: &str) -> Result<QrCodeResponse, WppError> {
-    let builder = self
-      .http
-      .get(self.url(&format!("/sessions/{session_id}/qr")));
-
-    let response = self.request(builder).send().await?;
-
-    let qr: OpenWAQrCodeResponse =
-      Self::check(response).await?.json().await?;
-
-    Ok(qr.into())
-  }
-
-  /// POST /api/sessions/:id/pairing-code
-  pub async fn request_pairing_code(
-    &self,
-    session_id: &str,
-    phone: &str,
-  ) -> Result<PairingCodeResponse, WppError> {
-    let clean_phone: String =
-      phone.chars().filter(|c| c.is_ascii_digit()).collect();
-
-    let builder = self
-      .http
-      .post(self.url(&format!(
-        "/sessions/{session_id}/pairing-code"
-      )))
-      .json(&serde_json::json!({
-        "phoneNumber": clean_phone
-      }));
-
-    let response = self.request(builder).send().await?;
-
-    let pairing: OpenWAPairingCodeResponse =
-      Self::check(response).await?.json().await?;
-
-    Ok(pairing.into())
   }
 
   /// GET /api/sessions/:id/chats
@@ -629,8 +543,6 @@ impl OpenWAClient {
         },
         author: message.author,
         timestamp: Some(message.timestamp),
-        // Live history does not expose the persisted delivery
-        // status field used by MessageRecord.
         status: String::new(),
       })
       .collect())
@@ -770,22 +682,6 @@ impl From<OpenWASession> for Session {
       status: session.status,
       phone: session.phone,
       push_name: session.push_name,
-    }
-  }
-}
-
-impl From<OpenWAQrCodeResponse> for QrCodeResponse {
-  fn from(response: OpenWAQrCodeResponse) -> Self {
-    Self {
-      qr_code: response.qr_code,
-    }
-  }
-}
-
-impl From<OpenWAPairingCodeResponse> for PairingCodeResponse {
-  fn from(response: OpenWAPairingCodeResponse) -> Self {
-    Self {
-      code: response.pairing_code,
     }
   }
 }

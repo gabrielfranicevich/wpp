@@ -1,54 +1,124 @@
+use std::path::Path;
+
 use anyhow::Result;
 use crossterm::style::Stylize;
 
-use crate::app::config::Config;
+use crate::app::config::{
+  BackendKind,
+  Config,
+};
 use crate::whatsapp::client::WhatsAppClient;
 
-/// `wpp logout [TARGET]`
-///
-/// Logs out the selected WhatsApp session through OpenWA and removes
-/// the corresponding local session entry.
-///
-/// All aliases associated with that OpenWA session are removed because
-/// logout operates on the session itself, not on an individual alias.
-pub async fn run(target: Option<String>) -> Result<()> {
-  let mut config = Config::load()?;
+pub async fn run(
+  target: Option<String>,
+) -> Result<()> {
+  let mut config =
+    Config::load()?;
 
-  let session_id = match target {
-    Some(query) => {
-      let Some((_, entry)) = config.find_session(&query) else {
-        eprintln!(" {} No session matching '{}'", "✗".red().bold(), query);
+  let (session_id, backend) =
+    match target {
+      Some(query) => {
+        let Some((_, entry)) =
+          config.find_session(&query)
+        else {
+          eprintln!(
+            " {} No session matching '{}'",
+            "✗".red().bold(),
+            query
+          );
 
-        eprintln!(" Run `wpp switch` to see available sessions.");
+          eprintln!(
+            " Run `wpp switch` to see available sessions."
+          );
 
-        return Ok(());
-      };
+          return Ok(());
+        };
 
-      entry.id.clone()
-    }
+        (
+          entry.id.clone(),
+          entry.backend,
+        )
+      }
 
-    None => {
-      let Some((_, entry)) = config.active_entry() else {
-        anyhow::bail!(
-          "No active session. Run `wpp switch` to select one \
-       or `wpp login` to create one."
-        );
-      };
+      None => {
+        let Some((_, entry)) =
+          config.active_entry()
+        else {
+          anyhow::bail!(
+            "No active session. Run `wpp switch` to select one \
+             or `wpp login` to create one."
+          );
+        };
 
-      entry.id.clone()
-    }
-  };
+        (
+          entry.id.clone(),
+          entry.backend,
+        )
+      }
+    };
 
-  let client = WhatsAppClient::openwa(&config.base_url, config.openwa_api_key());
+  let native_path =
+    if backend == BackendKind::Native {
+      Some(
+        config.native_session_path(
+          &session_id
+        )?
+      )
+    } else {
+      None
+    };
 
   eprintln!(
     "{}",
-    format!(" Logging out session '{session_id}'...").dark_grey()
+    format!(
+      " Logging out session '{session_id}'..."
+    )
+    .dark_grey()
   );
 
-  client.logout(&session_id).await?;
+  if native_path
+    .as_deref()
+    .is_none_or(|path| path.exists())
+  {
+    let client =
+      match backend {
+        BackendKind::OpenWA =>
+          WhatsAppClient::openwa(
+            &config.base_url,
+            config.openwa_api_key(),
+          ),
 
-  let removed = config.remove_session_by_id(&session_id);
+        BackendKind::Native =>
+          WhatsAppClient::open_native(
+            native_path
+              .as_deref()
+              .ok_or_else(|| {
+                anyhow::anyhow!(
+                  "native session storage path is missing"
+                )
+              })?
+          )
+          .await?,
+      };
+
+    let result =
+      client.logout(&session_id).await;
+
+    client.shutdown().await;
+
+    result?;
+  }
+
+  if let Some(path) =
+    native_path.as_deref()
+  {
+    remove_native_storage(path)?;
+  }
+
+  let removed =
+    config.remove_session_by_id(
+      &session_id
+    );
 
   config.save()?;
 
@@ -58,7 +128,16 @@ pub async fn run(target: Option<String>) -> Result<()> {
     session_id.bold()
   );
 
-  if let Some(entry) = removed {
+  if backend == BackendKind::Native {
+    println!(
+      " {} Removed native session storage.",
+      "✓".green().bold()
+    );
+  }
+
+  if let Some(entry) =
+    removed
+  {
     if entry.aliases.len() == 1 {
       println!(
         " {} Removed local alias: {}",
@@ -75,8 +154,27 @@ pub async fn run(target: Option<String>) -> Result<()> {
   }
 
   if config.active_session.is_none() {
-    println!(" Run `wpp switch <alias>` to select another session.");
+    println!(
+      " Run `wpp switch <alias>` to select another session."
+    );
   }
 
   Ok(())
+}
+
+fn remove_native_storage(
+  path: &Path,
+) -> Result<()> {
+  match std::fs::remove_file(path) {
+    Ok(_) => Ok(()),
+
+    Err(error)
+      if error.kind()
+        == std::io::ErrorKind::NotFound =>
+    {
+      Ok(())
+    }
+
+    Err(error) => Err(error.into()),
+  }
 }

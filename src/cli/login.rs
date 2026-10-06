@@ -13,7 +13,6 @@ use crate::app::config::{
   SessionEntry,
 };
 use crate::terminal::render::render_qr_payload;
-use crate::whatsapp::models::Session;
 use crate::whatsapp::native::{
   NativeAuthEvent,
   NativeAuthMode,

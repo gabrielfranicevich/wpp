@@ -12,7 +12,11 @@ pub mod switch;
 pub mod sync;
 
 #[derive(Parser)]
-#[command(name = "wpp", about = "WhatsApp from the terminal", version)]
+#[command(
+  name = "wpp",
+  about = "WhatsApp from the terminal",
+  version
+)]
 pub struct Cli {
   #[command(subcommand)]
   pub command: Command,
@@ -56,10 +60,14 @@ pub enum Command {
     target: Option<String>,
   },
 
-  /// List or delete OpenWA sessions
+  /// List or delete saved WhatsApp sessions
   Session {
-    /// Delete the selected OpenWA session
-    #[arg(short = 'D', long = "delete", value_name = "TARGET")]
+    /// Delete the selected saved session
+    #[arg(
+      short = 'D',
+      long = "delete",
+      value_name = "TARGET"
+    )]
     delete: Option<String>,
   },
 
