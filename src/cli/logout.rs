@@ -3,10 +3,7 @@ use std::path::Path;
 use anyhow::Result;
 use crossterm::style::Stylize;
 
-use crate::app::config::{
-  BackendKind,
-  Config,
-};
+use crate::app::config::Config;
 use crate::whatsapp::client::WhatsAppClient;
 
 pub async fn run(
@@ -15,7 +12,7 @@ pub async fn run(
   let mut config =
     Config::load()?;
 
-  let (session_id, backend) =
+  let session_id =
     match target {
       Some(query) => {
         let Some((_, entry)) =
@@ -34,10 +31,7 @@ pub async fn run(
           return Ok(());
         };
 
-        (
-          entry.id.clone(),
-          entry.backend,
-        )
+        entry.id.clone()
       }
 
       None => {
@@ -50,23 +44,14 @@ pub async fn run(
           );
         };
 
-        (
-          entry.id.clone(),
-          entry.backend,
-        )
+        entry.id.clone()
       }
     };
 
   let native_path =
-    if backend == BackendKind::Native {
-      Some(
-        config.native_session_path(
-          &session_id
-        )?
-      )
-    } else {
-      None
-    };
+    config.native_session_path(
+      &session_id
+    )?;
 
   eprintln!(
     "{}",
@@ -76,44 +61,26 @@ pub async fn run(
     .dark_grey()
   );
 
-  if native_path
-    .as_deref()
-    .is_none_or(|path| path.exists())
-  {
+  if native_path.exists() {
     let client =
-      match backend {
-        BackendKind::OpenWA =>
-          WhatsAppClient::openwa(
-            &config.base_url,
-            config.openwa_api_key(),
-          ),
-
-        BackendKind::Native =>
-          WhatsAppClient::open_native(
-            native_path
-              .as_deref()
-              .ok_or_else(|| {
-                anyhow::anyhow!(
-                  "native session storage path is missing"
-                )
-              })?
-          )
-          .await?,
-      };
+      WhatsAppClient::open_native(
+        &native_path
+      )
+      .await?;
 
     let result =
-      client.logout(&session_id).await;
+      client
+        .logout(&session_id)
+        .await;
 
     client.shutdown().await;
 
     result?;
   }
 
-  if let Some(path) =
-    native_path.as_deref()
-  {
-    remove_native_storage(path)?;
-  }
+  remove_native_storage(
+    &native_path
+  )?;
 
   let removed =
     config.remove_session_by_id(
@@ -128,12 +95,10 @@ pub async fn run(
     session_id.bold()
   );
 
-  if backend == BackendKind::Native {
-    println!(
-      " {} Removed native session storage.",
-      "✓".green().bold()
-    );
-  }
+  println!(
+    " {} Removed native session storage.",
+    "✓".green().bold()
+  );
 
   if let Some(entry) =
     removed
@@ -175,6 +140,7 @@ fn remove_native_storage(
       Ok(())
     }
 
-    Err(error) => Err(error.into()),
+    Err(error) =>
+      Err(error.into()),
   }
 }

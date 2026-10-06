@@ -8,7 +8,6 @@ use std::time::{
 };
 
 use crate::app::config::{
-  BackendKind,
   Config,
   SessionEntry,
 };
@@ -34,9 +33,12 @@ pub async fn run(
   phone: Option<String>,
   alias: Option<String>,
 ) -> Result<()> {
-  let mut config = Config::load()?;
+  let mut config =
+    Config::load()?;
 
-  if let Some(ref alias) = alias {
+  if let Some(ref alias) =
+    alias
+  {
     if config.alias_exists(alias) {
       eprintln!(
         "{}",
@@ -62,7 +64,8 @@ pub async fn run(
         &config,
         phone,
       )? {
-        Some(selection) => selection,
+        Some(selection) =>
+          selection,
 
         None => (
           generate_native_session_id(),
@@ -77,29 +80,30 @@ pub async fn run(
     ),
   };
 
-  let auth_mode = match phone.as_deref() {
-    Some(phone) => {
-      eprintln!(
-        "{}",
-        " Starting native WhatsApp session..."
-          .dark_grey()
-      );
+  let auth_mode =
+    match phone.as_deref() {
+      Some(phone) => {
+        eprintln!(
+          "{}",
+          " Starting native WhatsApp session..."
+            .dark_grey()
+        );
 
-      NativeAuthMode::PairingCode(
-        phone.to_string(),
-      )
-    }
+        NativeAuthMode::PairingCode(
+          phone.to_string(),
+        )
+      }
 
-    None => {
-      eprintln!(
-        "{}",
-        " Starting native WhatsApp session..."
-          .dark_grey()
-      );
+      None => {
+        eprintln!(
+          "{}",
+          " Starting native WhatsApp session..."
+            .dark_grey()
+        );
 
-      NativeAuthMode::Qr
-    }
-  };
+        NativeAuthMode::Qr
+      }
+    };
 
   if existing_alias.is_some() {
     eprintln!(
@@ -110,7 +114,9 @@ pub async fn run(
   }
 
   let storage_path =
-    config.native_session_path(&session_id)?;
+    config.native_session_path(
+      &session_id
+    )?;
 
   let mut client =
     NativeClient::open(
@@ -120,10 +126,15 @@ pub async fn run(
     .await?;
 
   let authenticated =
-    authenticate(&mut client, phone.is_some())
-      .await;
+    authenticate(
+      &mut client,
+      phone.is_some(),
+    )
+    .await;
 
-  if let Err(error) = authenticated {
+  if let Err(error) =
+    authenticated
+  {
     client.shutdown().await;
     return Err(error);
   }
@@ -137,7 +148,8 @@ pub async fn run(
     });
 
   let push_name = {
-    let push_name = client.push_name();
+    let push_name =
+      client.push_name();
 
     if push_name.trim().is_empty() {
       None
@@ -157,25 +169,29 @@ pub async fn run(
     );
   };
 
-  // Force the native library to flush its state before
-  // persisting the wpp-level session reference.
   client.shutdown().await;
 
-  let final_alias = alias
-    .or(existing_alias)
-    .unwrap_or_else(|| {
-      config.next_session_alias(
-        Some(&authenticated_phone),
-      )
-    });
+  let final_alias =
+    alias
+      .or(existing_alias)
+      .unwrap_or_else(|| {
+        config.next_session_alias(
+          Some(&authenticated_phone),
+        )
+      });
 
   config.upsert_session(
     SessionEntry {
-      id: session_id.clone(),
-      backend: BackendKind::Native,
-      aliases: Vec::new(),
-      phone: Some(authenticated_phone.clone()),
-      push_name: push_name.clone(),
+      id:
+        session_id.clone(),
+      aliases:
+        Vec::new(),
+      phone:
+        Some(
+          authenticated_phone.clone()
+        ),
+      push_name:
+        push_name.clone(),
     },
     final_alias.clone(),
   )?;
@@ -185,9 +201,12 @@ pub async fn run(
 
   config.save()?;
 
-  let who = push_name
-    .as_deref()
-    .unwrap_or(&authenticated_phone);
+  let who =
+    push_name
+      .as_deref()
+      .unwrap_or(
+        &authenticated_phone
+      );
 
   println!(
     " {} Logged in as {}",
@@ -203,10 +222,6 @@ pub async fn run(
   println!(
     " Alias: {}",
     final_alias
-  );
-
-  println!(
-    " Backend: native"
   );
 
   Ok(())
@@ -260,7 +275,8 @@ async fn authenticate(
       break;
     }
 
-    let now = Instant::now();
+    let now =
+      Instant::now();
 
     if now >= deadline {
       anyhow::bail!(
@@ -269,10 +285,14 @@ async fn authenticate(
     }
 
     let remaining =
-      deadline.saturating_duration_since(now);
+      deadline.saturating_duration_since(
+        now
+      );
 
     let poll_timeout =
-      remaining.min(Duration::from_millis(500));
+      remaining.min(
+        Duration::from_millis(500)
+      );
 
     match tokio::time::timeout(
       poll_timeout,
@@ -322,8 +342,8 @@ async fn authenticate(
     }
   }
 
-  let remaining = deadline
-    .saturating_duration_since(
+  let remaining =
+    deadline.saturating_duration_since(
       Instant::now()
     );
 
@@ -339,7 +359,7 @@ async fn authenticate(
   Ok(())
 }
 
-/// Find an existing native session by exact normalized phone.
+/// Find an existing session by exact normalized phone.
 ///
 /// Returns the existing session ID and its first alias.
 fn find_native_session_by_phone(
@@ -355,19 +375,21 @@ fn find_native_session_by_phone(
     );
   }
 
-  let matches: Vec<&SessionEntry> =
+  let matches:
+    Vec<&SessionEntry> =
     config
       .sessions
       .values()
       .filter(|entry| {
-        entry.backend == BackendKind::Native
-          && entry
-            .phone
-            .as_deref()
-            .map(normalize_phone)
-            .is_some_and(|entry_phone| {
+        entry
+          .phone
+          .as_deref()
+          .map(normalize_phone)
+          .is_some_and(
+            |entry_phone| {
               entry_phone == normalized_phone
-            })
+            }
+          )
       })
       .collect();
 
@@ -375,7 +397,8 @@ fn find_native_session_by_phone(
     0 => Ok(None),
 
     1 => {
-      let entry = matches[0];
+      let entry =
+        matches[0];
 
       Ok(Some((
         entry.id.clone(),
@@ -384,27 +407,28 @@ fn find_native_session_by_phone(
     }
 
     _ => {
-      let descriptions = matches
-        .iter()
-        .map(|entry| {
-          let aliases =
-            if entry.aliases.is_empty() {
-              String::new()
-            } else {
-              format!(
-                " [{}]",
-                entry.aliases.join(", ")
-              )
-            };
+      let descriptions =
+        matches
+          .iter()
+          .map(|entry| {
+            let aliases =
+              if entry.aliases.is_empty() {
+                String::new()
+              } else {
+                format!(
+                  " [{}]",
+                  entry.aliases.join(", ")
+                )
+              };
 
-          format!(
-            "{}{}",
-            entry.id,
-            aliases
-          )
-        })
-        .collect::<Vec<_>>()
-        .join(", ");
+            format!(
+              "{}{}",
+              entry.id,
+              aliases
+            )
+          })
+          .collect::<Vec<_>>()
+          .join(", ");
 
       anyhow::bail!(
         "Multiple native sessions match phone '{}': {}",
@@ -431,7 +455,9 @@ fn generate_native_session_id() -> String {
 }
 
 /// Normalize a phone number for exact comparison.
-fn normalize_phone(value: &str) -> String {
+fn normalize_phone(
+  value: &str,
+) -> String {
   value
     .chars()
     .filter(|c| c.is_ascii_digit())
@@ -440,7 +466,9 @@ fn normalize_phone(value: &str) -> String {
 
 /// Format pairing code with a dash in the middle:
 /// "ABCD-EFGH"
-fn format_pairing_code(code: &str) -> String {
+fn format_pairing_code(
+  code: &str,
+) -> String {
   if code.len() == 8 {
     format!(
       "{}-{}",

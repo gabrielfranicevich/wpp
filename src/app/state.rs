@@ -1,5 +1,4 @@
 use crate::app::config::{
-  BackendKind,
   Config,
   SessionEntry,
 };
@@ -21,40 +20,33 @@ impl AppContext {
   /// Load configuration and create a WhatsApp client bound
   /// to the active session.
   pub async fn load() -> anyhow::Result<Self> {
-    let config = Config::load()?;
+    let config =
+      Config::load()?;
 
-    let (_, entry) = config
-      .active_entry()
-      .ok_or_else(|| {
-        anyhow::anyhow!(
-          "No active session. Run `wpp login` first."
-        )
-      })?;
+    let (_, entry) =
+      config
+        .active_entry()
+        .ok_or_else(|| {
+          anyhow::anyhow!(
+            "No active session. Run `wpp login` first."
+          )
+        })?;
 
-    let session = ActiveSession {
-      entry: entry.clone(),
-    };
+    let session =
+      ActiveSession {
+        entry: entry.clone(),
+      };
 
-    let whatsapp = match entry.backend {
-      BackendKind::OpenWA => {
-        WhatsAppClient::openwa(
-          &config.base_url,
-          config.openwa_api_key(),
-        )
-      }
+    let path =
+      config.native_session_path(
+        &entry.id
+      )?;
 
-      BackendKind::Native => {
-        let path =
-          config.native_session_path(
-            &entry.id
-          )?;
-
-        WhatsAppClient::open_native(
-          &path
-        )
-        .await?
-      }
-    };
+    let whatsapp =
+      WhatsAppClient::open_native(
+        &path
+      )
+      .await?;
 
     Ok(Self {
       session,

@@ -2,41 +2,13 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-/// Backend used by a saved WhatsApp session.
-#[derive(
-  Debug,
-  Serialize,
-  Deserialize,
-  Clone,
-  Copy,
-  PartialEq,
-  Eq,
-  Default,
-)]
-#[serde(rename_all = "lowercase")]
-pub enum BackendKind {
-  /// Existing OpenWA-backed session.
-  #[default]
-  OpenWA,
-
-  /// Native Rust session backed by whatsapp-rust.
-  Native,
-}
-
 /// A saved WhatsApp session.
 ///
 /// A single WhatsApp session can have multiple user-facing wpp aliases.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SessionEntry {
-  /// Backend-specific session identifier.
+  /// Persistent session identifier.
   pub id: String,
-
-  /// Backend used to connect this session.
-  ///
-  /// Older configuration files do not contain this field and therefore
-  /// deserialize as `OpenWA`.
-  #[serde(default)]
-  pub backend: BackendKind,
 
   /// User-facing aliases associated with this session.
   #[serde(default)]
@@ -55,15 +27,6 @@ pub struct SessionEntry {
 /// (or platform equivalent).
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
-  /// OpenWA base URL (used by legacy OpenWA sessions).
-  pub base_url: String,
-
-  /// Optional OpenWA API key.
-  ///
-  /// Can also be supplied via WPP_OPENWA_API_KEY or OPENWA_API_KEY.
-  #[serde(default, skip_serializing_if = "Option::is_none")]
-  pub api_key: Option<String>,
-
   /// Alias of the last-used session.
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub active_session: Option<String>,
@@ -76,8 +39,6 @@ pub struct Config {
 impl Default for Config {
   fn default() -> Self {
     Self {
-      base_url: "http://localhost:2785".to_string(),
-      api_key: None,
       active_session: None,
       sessions: HashMap::new(),
     }
@@ -108,10 +69,10 @@ impl Config {
   /// The current format stores:
   ///
   ///  session_id -> SessionEntry {
-  ///      id, backend, aliases, phone, push_name
+  ///      id, aliases, phone, push_name
   ///  }
   ///
-  /// Old files are migrated automatically and default to OpenWA.
+  /// Old files are migrated automatically.
   pub fn load() -> anyhow::Result<Self> {
     let path = Self::path()?;
 
@@ -119,9 +80,11 @@ impl Config {
       return Ok(Self::default());
     }
 
-    let content = std::fs::read_to_string(&path)?;
+    let content =
+      std::fs::read_to_string(&path)?;
 
-    let mut config: Config = toml::from_str(&content)?;
+    let mut config: Config =
+      toml::from_str(&content)?;
 
     if config.migrate_legacy_sessions() {
       config.save()?;
@@ -138,7 +101,8 @@ impl Config {
       std::fs::create_dir_all(parent)?;
     }
 
-    let content = toml::to_string_pretty(self)?;
+    let content =
+      toml::to_string_pretty(self)?;
 
     std::fs::write(&path, content)?;
 
@@ -149,32 +113,36 @@ impl Config {
   ///
   /// Returns true when the config was changed.
   fn migrate_legacy_sessions(&mut self) -> bool {
-    let legacy = self
-      .sessions
-      .iter()
-      .any(|(key, entry)| key != &entry.id);
+    let legacy =
+      self
+        .sessions
+        .iter()
+        .any(|(key, entry)| key != &entry.id);
 
     if !legacy {
       return false;
     }
 
-    let old_sessions = std::mem::take(&mut self.sessions);
+    let old_sessions =
+      std::mem::take(&mut self.sessions);
 
-    let mut new_sessions: HashMap<String, SessionEntry> =
+    let mut new_sessions:
+      HashMap<String, SessionEntry> =
       HashMap::new();
 
     for (alias, entry) in old_sessions {
-      let session_id = entry.id.clone();
+      let session_id =
+        entry.id.clone();
 
-      let target = new_sessions
-        .entry(session_id.clone())
-        .or_insert_with(|| SessionEntry {
-          id: session_id,
-          backend: entry.backend,
-          aliases: Vec::new(),
-          phone: entry.phone.clone(),
-          push_name: entry.push_name.clone(),
-        });
+      let target =
+        new_sessions
+          .entry(session_id.clone())
+          .or_insert_with(|| SessionEntry {
+            id: session_id,
+            aliases: Vec::new(),
+            phone: entry.phone.clone(),
+            push_name: entry.push_name.clone(),
+          });
 
       if !target.aliases.contains(&alias) {
         target.aliases.push(alias);
@@ -193,76 +161,10 @@ impl Config {
       entry.aliases.sort();
     }
 
-    self.sessions = new_sessions;
+    self.sessions =
+      new_sessions;
 
     true
-  }
-
-  /// Return the OpenWA API key.
-  ///
-  /// Resolution order:
-  /// 1. `WPP_OPENWA_API_KEY` environment variable
-  /// 2. `OPENWA_API_KEY` environment variable
-  /// 3. `api_key` in config file
-  /// 4. Auto-discovery from a local `data/.api-key` file
-  pub fn openwa_api_key(&self) -> Option<String> {
-    Self::resolve_api_key(self.api_key.as_deref())
-  }
-
-  /// Resolve the OpenWA API key from environment, config or local files.
-  pub fn resolve_api_key(
-    from_config: Option<&str>,
-  ) -> Option<String> {
-    if let Ok(key) = std::env::var("WPP_OPENWA_API_KEY") {
-      let trimmed = key.trim();
-
-      if !trimmed.is_empty() {
-        return Some(trimmed.to_string());
-      }
-    }
-
-    if let Ok(key) = std::env::var("OPENWA_API_KEY") {
-      let trimmed = key.trim();
-
-      if !trimmed.is_empty() {
-        return Some(trimmed.to_string());
-      }
-    }
-
-    if let Some(key) = from_config {
-      let trimmed = key.trim();
-
-      if !trimmed.is_empty() {
-        return Some(trimmed.to_string());
-      }
-    }
-
-    let mut candidates =
-      vec![PathBuf::from("data/.api-key")];
-
-    if let Ok(exe) = std::env::current_exe() {
-      if let Some(dir) = exe
-        .parent()
-        .and_then(|p| p.parent())
-        .and_then(|p| p.parent())
-      {
-        candidates.push(
-          dir.join("data").join(".api-key"),
-        );
-      }
-    }
-
-    for path in candidates {
-      if let Ok(content) = std::fs::read_to_string(&path) {
-        let trimmed = content.trim();
-
-        if !trimmed.is_empty() {
-          return Some(trimmed.to_string());
-        }
-      }
-    }
-
-    None
   }
 
   /// Return the native whatsapp-rust storage path for a session.
@@ -273,16 +175,21 @@ impl Config {
     &self,
     session_id: &str,
   ) -> anyhow::Result<PathBuf> {
-    let dir = dirs::data_local_dir()
-      .ok_or_else(|| {
-        anyhow::anyhow!(
-          "Cannot determine local data directory"
-        )
-      })?
-      .join("wpp")
-      .join("whatsapp");
+    let dir =
+      dirs::data_local_dir()
+        .ok_or_else(|| {
+          anyhow::anyhow!(
+            "Cannot determine local data directory"
+          )
+        })?
+        .join("wpp")
+        .join("whatsapp");
 
-    Ok(dir.join(format!("{session_id}.sqlite")))
+    Ok(
+      dir.join(
+        format!("{session_id}.sqlite")
+      )
+    )
   }
 
   /// Get the active session entry, if any.
@@ -291,7 +198,8 @@ impl Config {
   pub fn active_entry(
     &self,
   ) -> Option<(&str, &SessionEntry)> {
-    let alias = self.active_session.as_deref()?;
+    let alias =
+      self.active_session.as_deref()?;
 
     self.find_session(alias)
   }
@@ -303,46 +211,63 @@ impl Config {
     &'a self,
     query: &'a str,
   ) -> Option<(&'a str, &'a SessionEntry)> {
-    if let Some(result) = self.find_by_alias(query) {
+    if let Some(result) =
+      self.find_by_alias(query)
+    {
       return Some(result);
     }
 
-    self.sessions.values().find_map(|entry| {
-      entry.phone.as_deref().and_then(|phone| {
-        if phone.contains(query)
-          || query.contains(phone)
-        {
-          entry
-            .aliases
-            .first()
-            .map(|alias| (alias.as_str(), entry))
-        } else {
-          None
-        }
-      })
-    })
+    self.sessions.values().find_map(
+      |entry| {
+        entry.phone.as_deref().and_then(
+          |phone| {
+            if phone.contains(query)
+              || query.contains(phone)
+            {
+              entry
+                .aliases
+                .first()
+                .map(|alias| {
+                  (alias.as_str(), entry)
+                })
+            } else {
+              None
+            }
+          }
+        )
+      }
+    )
   }
 
   fn find_by_alias<'a>(
     &'a self,
     query: &'a str,
   ) -> Option<(&'a str, &'a SessionEntry)> {
-    self.sessions.values().find_map(|entry| {
-      entry
-        .aliases
-        .iter()
-        .find(|alias| alias.as_str() == query)
-        .map(|alias| (alias.as_str(), entry))
-    })
+    self.sessions.values().find_map(
+      |entry| {
+        entry
+          .aliases
+          .iter()
+          .find(|alias| alias.as_str() == query)
+          .map(|alias| {
+            (alias.as_str(), entry)
+          })
+      }
+    )
   }
 
   /// Return true when an alias is already in use.
-  pub fn alias_exists(&self, alias: &str) -> bool {
-    self.sessions.values().any(|entry| {
-      entry.aliases.iter().any(|existing| {
-        existing == alias
-      })
-    })
+  pub fn alias_exists(
+    &self,
+    alias: &str,
+  ) -> bool {
+    self.sessions.values().any(
+      |entry| {
+        entry.aliases.iter().any(
+          |existing| existing == alias
+        )
+      }
+    )
   }
 
   /// Insert a new session or update its metadata.
@@ -355,7 +280,8 @@ impl Config {
     alias: String,
   ) -> anyhow::Result<()> {
     if self.alias_exists(&alias) {
-      let existing = self.find_by_alias(&alias);
+      let existing =
+        self.find_by_alias(&alias);
 
       if existing
         .map(|(_, entry)| entry.id.as_str())
@@ -368,24 +294,29 @@ impl Config {
       }
     }
 
-    let session_id = session.id.clone();
-    let session_backend = session.backend;
-    let session_phone = session.phone.clone();
-    let session_push_name = session.push_name.clone();
+    let session_id =
+      session.id.clone();
 
-    let entry = self
-      .sessions
-      .entry(session_id)
-      .or_insert(session);
+    let session_phone =
+      session.phone.clone();
 
-    entry.backend = session_backend;
+    let session_push_name =
+      session.push_name.clone();
+
+    let entry =
+      self
+        .sessions
+        .entry(session_id)
+        .or_insert(session);
 
     if session_phone.is_some() {
-      entry.phone = session_phone;
+      entry.phone =
+        session_phone;
     }
 
     if session_push_name.is_some() {
-      entry.push_name = session_push_name;
+      entry.push_name =
+        session_push_name;
     }
 
     if !entry.aliases.contains(&alias) {
@@ -407,17 +338,20 @@ impl Config {
     &self,
     phone: Option<&str>,
   ) -> String {
-    let phone_digits = phone
-      .map(|value| {
-        value
-          .chars()
-          .filter(|c| c.is_ascii_digit())
-          .collect::<String>()
-      })
-      .filter(|value| !value.is_empty());
+    let phone_digits =
+      phone
+        .map(|value| {
+          value
+            .chars()
+            .filter(|c| c.is_ascii_digit())
+            .collect::<String>()
+        })
+        .filter(|value| !value.is_empty());
 
     let base =
-      phone_digits.as_deref().unwrap_or("default");
+      phone_digits
+        .as_deref()
+        .unwrap_or("default");
 
     self.next_available_alias(base)
   }
@@ -432,7 +366,8 @@ impl Config {
       return base.to_string();
     }
 
-    let mut suffix = 2usize;
+    let mut suffix =
+      2usize;
 
     loop {
       let candidate =
@@ -451,19 +386,21 @@ impl Config {
     &mut self,
     session_id: &str,
   ) -> Option<SessionEntry> {
-    let removed = self.sessions.remove(session_id);
+    let removed =
+      self.sessions.remove(session_id);
 
     if let Some(entry) = &removed {
       if self
         .active_session
         .as_deref()
         .is_some_and(|active| {
-          entry.aliases.iter().any(|alias| {
-            alias == active
-          })
+          entry.aliases.iter().any(
+            |alias| alias == active
+          )
         })
       {
-        self.active_session = None;
+        self.active_session =
+          None;
       }
     }
 
@@ -485,7 +422,9 @@ impl Config {
       .aliases
       .iter()
       .cloned()
-      .map(|alias| (alias, entry.clone()))
+      .map(|alias| {
+        (alias, entry.clone())
+      })
       .collect()
   }
 }
@@ -493,7 +432,6 @@ impl Config {
 #[cfg(test)]
 mod tests {
   use super::{
-    BackendKind,
     Config,
     SessionEntry,
   };
@@ -504,7 +442,6 @@ mod tests {
   ) -> SessionEntry {
     SessionEntry {
       id: id.to_string(),
-      backend: BackendKind::OpenWA,
       aliases: aliases
         .iter()
         .map(|alias| alias.to_string())
@@ -515,16 +452,9 @@ mod tests {
   }
 
   #[test]
-  fn default_backend_is_openwa() {
-    assert_eq!(
-      BackendKind::default(),
-      BackendKind::OpenWA
-    );
-  }
-
-  #[test]
   fn next_session_alias_uses_phone() {
-    let config = Config::default();
+    let config =
+      Config::default();
 
     assert_eq!(
       config.next_session_alias(
@@ -536,7 +466,8 @@ mod tests {
 
   #[test]
   fn next_session_alias_falls_back_to_default() {
-    let config = Config::default();
+    let config =
+      Config::default();
 
     assert_eq!(
       config.next_session_alias(None),
@@ -546,7 +477,8 @@ mod tests {
 
   #[test]
   fn next_session_alias_avoids_existing_aliases() {
-    let mut config = Config::default();
+    let mut config =
+      Config::default();
 
     config.sessions.insert(
       "session-id".to_string(),
@@ -569,7 +501,8 @@ mod tests {
 
   #[test]
   fn find_session_finds_alias() {
-    let mut config = Config::default();
+    let mut config =
+      Config::default();
 
     config.sessions.insert(
       "session-id".to_string(),
@@ -584,15 +517,24 @@ mod tests {
 
     assert!(result.is_some());
 
-    let (alias, entry) = result.unwrap();
+    let (alias, entry) =
+      result.unwrap();
 
-    assert_eq!(alias, "phone");
-    assert_eq!(entry.id, "session-id");
+    assert_eq!(
+      alias,
+      "phone"
+    );
+
+    assert_eq!(
+      entry.id,
+      "session-id"
+    );
   }
 
   #[test]
   fn remove_active_session_clears_active_alias() {
-    let mut config = Config::default();
+    let mut config =
+      Config::default();
 
     config.sessions.insert(
       "session-id".to_string(),
@@ -606,7 +548,9 @@ mod tests {
       Some("phone".to_string());
 
     let removed =
-      config.remove_session_by_id("session-id");
+      config.remove_session_by_id(
+        "session-id"
+      );
 
     assert!(removed.is_some());
     assert!(config.sessions.is_empty());
@@ -615,7 +559,8 @@ mod tests {
 
   #[test]
   fn remove_sessions_by_id_returns_all_aliases() {
-    let mut config = Config::default();
+    let mut config =
+      Config::default();
 
     config.sessions.insert(
       "shared-session".to_string(),
@@ -627,39 +572,57 @@ mod tests {
 
     config.sessions.insert(
       "other-session".to_string(),
-      session("other-session", &["business"]),
+      session(
+        "other-session",
+        &["business"],
+      ),
     );
 
     let removed =
-      config.remove_sessions_by_id("shared-session");
+      config.remove_sessions_by_id(
+        "shared-session"
+      );
 
-    assert_eq!(removed.len(), 2);
+    assert_eq!(
+      removed.len(),
+      2
+    );
 
     assert!(
       !config
         .sessions
-        .contains_key("shared-session")
+        .contains_key(
+          "shared-session"
+        )
     );
 
     assert!(
       config
         .sessions
-        .contains_key("other-session")
+        .contains_key(
+          "other-session"
+        )
     );
   }
 
   #[test]
   fn upsert_session_creates_one_session_with_alias() {
-    let mut config = Config::default();
+    let mut config =
+      Config::default();
 
-    let result = config.upsert_session(
-      session("session-id", &[]),
-      "personal".to_string(),
-    );
+    let result =
+      config.upsert_session(
+        session(
+          "session-id",
+          &[],
+        ),
+        "personal".to_string(),
+      );
 
     assert!(result.is_ok());
 
-    let entry = &config.sessions["session-id"];
+    let entry =
+      &config.sessions["session-id"];
 
     assert_eq!(
       entry.aliases,
@@ -669,21 +632,30 @@ mod tests {
 
   #[test]
   fn upsert_session_adds_alias_to_existing_session() {
-    let mut config = Config::default();
+    let mut config =
+      Config::default();
 
     config.sessions.insert(
       "session-id".to_string(),
-      session("session-id", &["personal"]),
+      session(
+        "session-id",
+        &["personal"],
+      ),
     );
 
-    let result = config.upsert_session(
-      session("session-id", &[]),
-      "phone".to_string(),
-    );
+    let result =
+      config.upsert_session(
+        session(
+          "session-id",
+          &[],
+        ),
+        "phone".to_string(),
+      );
 
     assert!(result.is_ok());
 
-    let entry = &config.sessions["session-id"];
+    let entry =
+      &config.sessions["session-id"];
 
     assert_eq!(
       entry.aliases,
@@ -696,30 +668,41 @@ mod tests {
 
   #[test]
   fn upsert_session_updates_metadata() {
-    let mut config = Config::default();
+    let mut config =
+      Config::default();
 
     config.sessions.insert(
       "session-id".to_string(),
-      session("session-id", &["personal"]),
+      session(
+        "session-id",
+        &["personal"],
+      ),
     );
 
     let mut updated =
-      session("session-id", &[]);
+      session(
+        "session-id",
+        &[],
+      );
 
     updated.phone =
-      Some("5493511234567".to_string());
+      Some(
+        "5493511234567".to_string()
+      );
 
     updated.push_name =
       Some("Gabriel".to_string());
 
-    let result = config.upsert_session(
-      updated,
-      "personal".to_string(),
-    );
+    let result =
+      config.upsert_session(
+        updated,
+        "personal".to_string(),
+      );
 
     assert!(result.is_ok());
 
-    let entry = &config.sessions["session-id"];
+    let entry =
+      &config.sessions["session-id"];
 
     assert_eq!(
       entry.phone.as_deref(),
@@ -729,23 +712,6 @@ mod tests {
     assert_eq!(
       entry.push_name.as_deref(),
       Some("Gabriel")
-    );
-  }
-
-  #[test]
-  fn deserialize_old_session_defaults_to_openwa() {
-    let content = r#"
-      id = "session-id"
-      aliases = ["personal"]
-    "#;
-
-    let entry: SessionEntry =
-      toml::from_str(content)
-        .expect("expected legacy session");
-
-    assert_eq!(
-      entry.backend,
-      BackendKind::OpenWA
     );
   }
 }

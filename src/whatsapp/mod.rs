@@ -1,4 +1,3 @@
 pub mod client;
 pub mod models;
 pub mod native;
-pub mod openwa;

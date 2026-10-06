@@ -19,7 +19,9 @@ pub fn render_chats(
   chats: &[Chat],
 ) {
   if chats.is_empty() {
-    println!(" No chats found.");
+    println!(
+      " No chats found."
+    );
     return;
   }
 
@@ -41,29 +43,33 @@ pub fn render_chats(
         " "
       };
 
-    let name = truncate(
-      if chat.name.trim().is_empty() {
-        &chat.id
-      } else {
-        &chat.name
-      },
-      NAME_WIDTH,
-    );
+    let name =
+      truncate(
+        if chat.name.trim().is_empty() {
+          &chat.id
+        } else {
+          &chat.name
+        },
+        NAME_WIDTH,
+      );
 
-    let preview = chat
-      .last_message
-      .as_deref()
-      .map(normalize_preview)
-      .map(|text| {
-        truncate(
-          &text,
-          PREVIEW_WIDTH,
-        )
-      })
-      .unwrap_or_default();
+    let preview =
+      chat
+        .last_message
+        .as_deref()
+        .map(normalize_preview)
+        .map(|text| {
+          truncate(
+            &text,
+            PREVIEW_WIDTH,
+          )
+        })
+        .unwrap_or_default();
 
     let age =
-      format_age(chat.timestamp);
+      format_age(
+        chat.timestamp
+      );
 
     let unread =
       if chat.unread_count > 0 {
@@ -86,10 +92,6 @@ pub fn render_chats(
 
 /// Generate a QR code from a raw WhatsApp pairing payload
 /// and render it using Unicode half-block characters.
-///
-/// This function is backend-neutral: it receives the payload
-/// directly and does not know whether it came from OpenWA,
-/// whatsapp-rust, or another transport.
 pub(crate) fn render_qr_payload(
   payload: &str,
 ) -> Result<()> {
@@ -105,14 +107,14 @@ pub(crate) fn render_qr_payload(
   let modules =
     code.to_colors();
 
-  let width = code.width();
+  let width =
+    code.width();
 
   let total_width =
     width + QR_QUIET_ZONE * 2;
 
   println!();
 
-  // Top quiet zone.
   for _ in 0..QR_QUIET_ZONE {
     print!(" ");
 
@@ -123,19 +125,21 @@ pub(crate) fn render_qr_payload(
     println!();
   }
 
-  let mut row = 0usize;
+  let mut row =
+    0usize;
 
   while row < width {
     print!(" ");
 
-    // Left quiet zone.
     for _ in 0..QR_QUIET_ZONE {
       print!(" ");
     }
 
     for col in 0..width {
       let top =
-        modules[row * width + col];
+        modules[
+          row * width + col
+        ];
 
       let bottom =
         if row + 1 < width {
@@ -147,7 +151,6 @@ pub(crate) fn render_qr_payload(
         };
 
       match (top, bottom) {
-        // Both modules are dark.
         (
           qrcode::Color::Dark,
           qrcode::Color::Dark,
@@ -155,7 +158,6 @@ pub(crate) fn render_qr_payload(
           print!(" ");
         }
 
-        // Top is light, bottom is dark.
         (
           qrcode::Color::Light,
           qrcode::Color::Dark,
@@ -163,7 +165,6 @@ pub(crate) fn render_qr_payload(
           print!("▀");
         }
 
-        // Top is dark, bottom is light.
         (
           qrcode::Color::Dark,
           qrcode::Color::Light,
@@ -171,7 +172,6 @@ pub(crate) fn render_qr_payload(
           print!("▄");
         }
 
-        // Both modules are light.
         (
           qrcode::Color::Light,
           qrcode::Color::Light,
@@ -181,7 +181,6 @@ pub(crate) fn render_qr_payload(
       }
     }
 
-    // Right quiet zone.
     for _ in 0..QR_QUIET_ZONE {
       print!(" ");
     }
@@ -191,7 +190,6 @@ pub(crate) fn render_qr_payload(
     row += 2;
   }
 
-  // Bottom quiet zone.
   for _ in 0..QR_QUIET_ZONE {
     print!(" ");
 
@@ -229,9 +227,11 @@ fn truncate(
 
   for _ in 0..max_chars {
     match chars.next() {
-      Some(ch) => out.push(ch),
+      Some(ch) =>
+        out.push(ch),
 
-      None => return out,
+      None =>
+        return out,
     }
   }
 
@@ -239,7 +239,8 @@ fn truncate(
     if max_chars <= 1 {
       "…".to_string()
     } else {
-      let mut truncated = out;
+      let mut truncated =
+        out;
 
       truncated.pop();
       truncated.push('…');
@@ -272,15 +273,27 @@ fn format_age(
       "now".to_string(),
 
     60..=3_599 =>
-      format!("{}m", delta / 60),
+      format!(
+        "{}m",
+        delta / 60
+      ),
 
     3_600..=86_399 =>
-      format!("{}h", delta / 3_600),
+      format!(
+        "{}h",
+        delta / 3_600
+      ),
 
     86_400..=604_799 =>
-      format!("{}d", delta / 86_400),
+      format!(
+        "{}d",
+        delta / 86_400
+      ),
 
     _ =>
-      format!("{}w", delta / 604_800),
+      format!(
+        "{}w",
+        delta / 604_800
+      ),
   }
 }

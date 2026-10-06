@@ -1,6 +1,4 @@
 /// Domain-level chat model used by wpp.
-///
-/// This deliberately does not mirror OpenWA's DTOs one-to-one.
 #[derive(Debug, Clone)]
 pub struct Chat {
   pub id: String,
@@ -37,36 +35,10 @@ pub struct MessagePage {
   pub next_cursor: Option<String>,
 }
 
-/// A realtime event received from the active WhatsApp backend.
-///
-/// The event payload remains backend-neutral JSON for now. A future
-/// synchronization layer can turn specific event types into strongly
-/// typed domain records without changing the listener transport.
+/// A realtime event received from WhatsApp.
 #[derive(Debug, Clone)]
 pub struct RealtimeEvent {
   pub event: String,
   pub timestamp: String,
   pub data: serde_json::Value,
-}
-
-/// WhatsApp session used by application code.
-#[derive(Debug, Clone)]
-pub struct Session {
-  pub id: String,
-  pub name: String,
-  pub status: String,
-  pub phone: Option<String>,
-  pub push_name: Option<String>,
-}
-
-/// QR response.
-#[derive(Debug, Clone)]
-pub struct QrCodeResponse {
-  pub qr_code: String,
-}
-
-/// Phone pairing response.
-#[derive(Debug, Clone)]
-pub struct PairingCodeResponse {
-  pub code: String,
 }
