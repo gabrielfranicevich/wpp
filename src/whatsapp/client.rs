@@ -1,17 +1,8 @@
 use std::path::Path;
 
 use crate::error::WppError;
-use crate::whatsapp::models::{
-  Chat,
-  Message,
-  MessagePage,
-  RealtimeEvent,
-};
-use crate::whatsapp::native::{
-  NativeAuthMode,
-  NativeClient,
-  NativeRealtimeListener,
-};
+use crate::whatsapp::models::{Chat, Message, MessagePage, RealtimeEvent};
+use crate::whatsapp::native::{NativeAuthMode, NativeClient, NativeRealtimeListener};
 
 /// Realtime listener exposed by the WhatsApp abstraction layer.
 pub struct RealtimeListener {
@@ -19,24 +10,16 @@ pub struct RealtimeListener {
 }
 
 impl RealtimeListener {
-  pub fn try_recv(
-    &mut self,
-  ) -> Option<RealtimeEvent> {
+  pub fn try_recv(&mut self) -> Option<RealtimeEvent> {
     self.listener.try_recv()
   }
 
-  pub async fn recv(
-    &mut self,
-  ) -> Option<RealtimeEvent> {
+  pub async fn recv(&mut self) -> Option<RealtimeEvent> {
     self.listener.recv().await
   }
 
-  pub async fn disconnect(
-    self,
-  ) -> Result<(), WppError> {
-    self.listener
-      .disconnect()
-      .await
+  pub async fn disconnect(self) -> Result<(), WppError> {
+    self.listener.disconnect().await
   }
 }
 
@@ -47,47 +30,25 @@ pub struct WhatsAppClient {
 
 impl WhatsAppClient {
   /// Create a client backed by the native Rust transport.
-  pub fn native(
-    client: NativeClient,
-  ) -> Self {
-    Self {
-      client,
-    }
+  pub fn native(client: NativeClient) -> Self {
+    Self { client }
   }
 
   /// Open a persisted native WhatsApp session without
   /// requesting a new authentication flow.
-  pub async fn open_native(
-    storage_path: &Path,
-  ) -> Result<Self, WppError> {
-    let client =
-      NativeClient::open(
-        storage_path,
-        NativeAuthMode::None,
-      )
-      .await?;
+  pub async fn open_native(storage_path: &Path) -> Result<Self, WppError> {
+    let client = NativeClient::open(storage_path, NativeAuthMode::None).await?;
 
-    Ok(
-      Self::native(client)
-    )
+    Ok(Self::native(client))
   }
 
   /// Gracefully shut down the underlying client.
-  pub async fn shutdown(
-    self,
-  ) {
-    self.client
-      .shutdown()
-      .await;
+  pub async fn shutdown(self) {
+    self.client.shutdown().await;
   }
 
-  pub async fn logout(
-    &self,
-    _session_id: &str,
-  ) -> Result<(), WppError> {
-    self.client
-      .logout()
-      .await;
+  pub async fn logout(&self, _session_id: &str) -> Result<(), WppError> {
+    self.client.logout().await;
 
     Ok(())
   }
@@ -97,9 +58,7 @@ impl WhatsAppClient {
     _session_id: &str,
     chat_id: &str,
   ) -> Result<Option<Chat>, WppError> {
-    self.client
-      .get_chat(chat_id)
-      .await
+    self.client.get_chat(chat_id).await
   }
 
   pub async fn find_chats_by_phone(
@@ -107,9 +66,7 @@ impl WhatsAppClient {
     _session_id: &str,
     phone: &str,
   ) -> Result<Vec<Chat>, WppError> {
-    self.client
-      .find_chats_by_phone(phone)
-      .await
+    self.client.find_chats_by_phone(phone).await
   }
 
   pub async fn list_chats(
@@ -118,42 +75,19 @@ impl WhatsAppClient {
     limit: usize,
     offset: usize,
   ) -> Result<Vec<Chat>, WppError> {
-    self.client
-      .list_chats(
-        limit,
-        offset,
-      )
-      .await
+    self.client.list_chats(limit, offset).await
   }
 
-  pub async fn delete_chat(
-    &self,
-    _session_id: &str,
-    chat_id: &str,
-  ) -> Result<(), WppError> {
-    self.client
-      .delete_chat(chat_id)
-      .await
+  pub async fn delete_chat(&self, _session_id: &str, chat_id: &str) -> Result<(), WppError> {
+    self.client.delete_chat(chat_id).await
   }
 
-  pub async fn block_contact(
-    &self,
-    _session_id: &str,
-    contact_id: &str,
-  ) -> Result<(), WppError> {
-    self.client
-      .block_contact(contact_id)
-      .await
+  pub async fn block_contact(&self, _session_id: &str, contact_id: &str) -> Result<(), WppError> {
+    self.client.block_contact(contact_id).await
   }
 
-  pub async fn unblock_contact(
-    &self,
-    _session_id: &str,
-    contact_id: &str,
-  ) -> Result<(), WppError> {
-    self.client
-      .unblock_contact(contact_id)
-      .await
+  pub async fn unblock_contact(&self, _session_id: &str, contact_id: &str) -> Result<(), WppError> {
+    self.client.unblock_contact(contact_id).await
   }
 
   pub async fn archive_chat(
@@ -162,12 +96,7 @@ impl WhatsAppClient {
     chat_id: &str,
     archive: bool,
   ) -> Result<(), WppError> {
-    self.client
-      .archive_chat(
-        chat_id,
-        archive,
-      )
-      .await
+    self.client.archive_chat(chat_id, archive).await
   }
 
   pub async fn pin_chat(
@@ -176,12 +105,7 @@ impl WhatsAppClient {
     chat_id: &str,
     pin: bool,
   ) -> Result<(), WppError> {
-    self.client
-      .pin_chat(
-        chat_id,
-        pin,
-      )
-      .await
+    self.client.pin_chat(chat_id, pin).await
   }
 
   pub async fn mute_chat(
@@ -190,12 +114,7 @@ impl WhatsAppClient {
     chat_id: &str,
     mute_until: Option<i64>,
   ) -> Result<(), WppError> {
-    self.client
-      .mute_chat(
-        chat_id,
-        mute_until,
-      )
-      .await
+    self.client.mute_chat(chat_id, mute_until).await
   }
 
   pub async fn mark_chat_read(
@@ -204,22 +123,11 @@ impl WhatsAppClient {
     chat_id: &str,
     message_ids: &[String],
   ) -> Result<(), WppError> {
-    self.client
-      .mark_chat_read(
-        chat_id,
-        message_ids,
-      )
-      .await
+    self.client.mark_chat_read(chat_id, message_ids).await
   }
 
-  pub async fn mark_chat_unread(
-    &self,
-    _session_id: &str,
-    chat_id: &str,
-  ) -> Result<(), WppError> {
-    self.client
-      .mark_chat_unread(chat_id)
-      .await
+  pub async fn mark_chat_unread(&self, _session_id: &str, chat_id: &str) -> Result<(), WppError> {
+    self.client.mark_chat_unread(chat_id).await
   }
 
   pub async fn send_text(
@@ -228,12 +136,7 @@ impl WhatsAppClient {
     chat_id: &str,
     text: &str,
   ) -> Result<(), WppError> {
-    self.client
-      .send_text(
-        chat_id,
-        text,
-      )
-      .await
+    self.client.send_text(chat_id, text).await
   }
 
   pub async fn list_messages(
@@ -243,12 +146,9 @@ impl WhatsAppClient {
     limit: usize,
     after: Option<&str>,
   ) -> Result<MessagePage, WppError> {
-    self.client
-      .list_persisted_messages(
-        chat_id,
-        limit,
-        after,
-      )
+    self
+      .client
+      .list_persisted_messages(chat_id, limit, after)
       .await
   }
 
@@ -260,27 +160,13 @@ impl WhatsAppClient {
     limit: usize,
     deep: bool,
   ) -> Result<Vec<Message>, WppError> {
-    self.client
-      .get_chat_history(
-        chat_id,
-        limit,
-        deep,
-      )
-      .await
+    self.client.get_chat_history(chat_id, limit, deep).await
   }
 
   /// Open a realtime event listener for the active WhatsApp session.
-  pub async fn listen(
-    &self,
-    _session_id: &str,
-  ) -> Result<RealtimeListener, WppError> {
-    Ok(
-      RealtimeListener {
-        listener:
-          self.client
-            .listen()
-            .await?,
-      }
-    )
+  pub async fn listen(&self, _session_id: &str) -> Result<RealtimeListener, WppError> {
+    Ok(RealtimeListener {
+      listener: self.client.listen().await?,
+    })
   }
 }

@@ -1,8 +1,3 @@
 mod client;
 
-pub use client::{
-  NativeAuthEvent,
-  NativeAuthMode,
-  NativeClient,
-  NativeRealtimeListener,
-};
+pub use client::{NativeAuthEvent, NativeAuthMode, NativeClient, NativeRealtimeListener};

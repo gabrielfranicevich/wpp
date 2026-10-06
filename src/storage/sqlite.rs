@@ -101,11 +101,7 @@ impl LocalMessageStore {
 
   fn database_path() -> anyhow::Result<PathBuf> {
     let dir = dirs::data_local_dir()
-      .ok_or_else(|| {
-        anyhow::anyhow!(
-          "Cannot determine local data directory"
-        )
-      })?
+      .ok_or_else(|| anyhow::anyhow!("Cannot determine local data directory"))?
       .join("wpp");
 
     Ok(dir.join(DATABASE_FILE))
@@ -155,9 +151,7 @@ fn initialize(connection: &Connection) -> anyhow::Result<()> {
   Ok(())
 }
 
-fn direction_as_str(
-  direction: MessageDirection,
-) -> &'static str {
+fn direction_as_str(direction: MessageDirection) -> &'static str {
   match direction {
     MessageDirection::Incoming => "incoming",
     MessageDirection::Outgoing => "outgoing",
@@ -167,10 +161,7 @@ fn direction_as_str(
 #[cfg(test)]
 mod tests {
   use super::LocalMessageStore;
-  use crate::whatsapp::models::{
-    Message,
-    MessageDirection,
-  };
+  use crate::whatsapp::models::{Message, MessageDirection};
 
   fn message(id: &str, body: &str) -> Message {
     Message {
@@ -189,20 +180,12 @@ mod tests {
 
   #[test]
   fn inserts_messages() {
-    let mut store =
-      LocalMessageStore::in_memory()
-        .expect("open store");
+    let mut store = LocalMessageStore::in_memory().expect("open store");
 
-    let messages = vec![
-      message("1", "hello"),
-      message("2", "world"),
-    ];
+    let messages = vec![message("1", "hello"), message("2", "world")];
 
     let count = store
-      .upsert_messages(
-        "session-1",
-        &messages,
-      )
+      .upsert_messages("session-1", &messages)
       .expect("insert messages");
 
     assert_eq!(count, 2);
@@ -221,22 +204,14 @@ mod tests {
 
   #[test]
   fn same_message_is_updated_instead_of_duplicated() {
-    let mut store =
-      LocalMessageStore::in_memory()
-        .expect("open store");
+    let mut store = LocalMessageStore::in_memory().expect("open store");
 
     store
-      .upsert_messages(
-        "session-1",
-        &[message("1", "first")],
-      )
+      .upsert_messages("session-1", &[message("1", "first")])
       .expect("insert message");
 
     store
-      .upsert_messages(
-        "session-1",
-        &[message("1", "updated")],
-      )
+      .upsert_messages("session-1", &[message("1", "updated")])
       .expect("update message");
 
     let count: i64 = store
@@ -266,31 +241,19 @@ mod tests {
 
   #[test]
   fn sessions_do_not_collide_on_message_id() {
-    let mut store =
-      LocalMessageStore::in_memory()
-        .expect("open store");
+    let mut store = LocalMessageStore::in_memory().expect("open store");
 
     store
-      .upsert_messages(
-        "session-1",
-        &[message("same-id", "one")],
-      )
+      .upsert_messages("session-1", &[message("same-id", "one")])
       .expect("insert first session");
 
     store
-      .upsert_messages(
-        "session-2",
-        &[message("same-id", "two")],
-      )
+      .upsert_messages("session-2", &[message("same-id", "two")])
       .expect("insert second session");
 
     let count: i64 = store
       .connection
-      .query_row(
-        "SELECT COUNT(*) FROM messages",
-        [],
-        |row| row.get(0),
-      )
+      .query_row("SELECT COUNT(*) FROM messages", [], |row| row.get(0))
       .expect("count rows");
 
     assert_eq!(count, 2);

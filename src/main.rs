@@ -24,10 +24,7 @@ async fn main() -> anyhow::Result<()> {
         phone.or(phone_pos).filter(|p| {
           let p_lower = p.trim().to_lowercase();
 
-          p_lower != "qr"
-            && p_lower != "-qr"
-            && p_lower != "--qr"
-            && p_lower != "-q"
+          p_lower != "qr" && p_lower != "-qr" && p_lower != "--qr" && p_lower != "-q"
         })
       };
 
@@ -52,13 +49,7 @@ async fn main() -> anyhow::Result<()> {
       unread,
       filter,
     } => {
-      cli::list::run(
-        limit,
-        all,
-        unread,
-        filter,
-      )
-      .await?;
+      cli::list::run(limit, all, unread, filter).await?;
     }
 
     cli::Command::Chat {

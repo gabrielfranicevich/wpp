@@ -35,42 +35,25 @@ impl<'a> MessageSyncService<'a> {
     chat: &Chat,
     max_messages: Option<usize>,
   ) -> Result<usize, WppError> {
-    let target =
-      max_messages.unwrap_or(
-        usize::MAX
-      );
+    let target = max_messages.unwrap_or(usize::MAX);
 
     if target == 0 {
       return Ok(0);
     }
 
-    let mut after:
-      Option<String> = None;
+    let mut after: Option<String> = None;
 
-    let mut fetched =
-      0usize;
+    let mut fetched = 0usize;
 
     loop {
-      let remaining =
-        target.saturating_sub(
-          fetched
-        );
+      let remaining = target.saturating_sub(fetched);
 
-      let page_limit =
-        remaining.min(
-          PAGE_SIZE
-        );
+      let page_limit = remaining.min(PAGE_SIZE);
 
-      let page =
-        self
-          .whatsapp
-          .list_messages(
-            self.session_id,
-            &chat.id,
-            page_limit,
-            after.as_deref(),
-          )
-          .await?;
+      let page = self
+        .whatsapp
+        .list_messages(self.session_id, &chat.id, page_limit, after.as_deref())
+        .await?;
 
       if page.messages.is_empty() {
         break;
@@ -78,53 +61,26 @@ impl<'a> MessageSyncService<'a> {
 
       self
         .store
-        .upsert_messages(
-          self.session_id,
-          &page.messages,
-        )
-        .map_err(|error| {
-          WppError::Other(
-            format!(
-              "local message cache error: {error}"
-            )
-          )
-        })?;
+        .upsert_messages(self.session_id, &page.messages)
+        .map_err(|error| WppError::Other(format!("local message cache error: {error}")))?;
 
-      fetched +=
-        page.messages.len();
+      fetched += page.messages.len();
 
-      if fetched >= target
-        || page.messages.len()
-          < page_limit
-      {
+      if fetched >= target || page.messages.len() < page_limit {
         break;
       }
 
-      let next_after =
-        page
-          .next_cursor
-          .ok_or_else(|| {
-            WppError::Other(
-              "message backend returned no next cursor"
-                .to_string()
-            )
-          })?;
+      let next_after = page
+        .next_cursor
+        .ok_or_else(|| WppError::Other("message backend returned no next cursor".to_string()))?;
 
-      if after.as_deref()
-        == Some(
-          next_after.as_str()
-        )
-      {
-        return Err(
-          WppError::Other(
-            "message backend returned a repeated cursor"
-              .to_string()
-          )
-        );
+      if after.as_deref() == Some(next_after.as_str()) {
+        return Err(WppError::Other(
+          "message backend returned a repeated cursor".to_string(),
+        ));
       }
 
-      after =
-        Some(next_after);
+      after = Some(next_after);
     }
 
     Ok(fetched)

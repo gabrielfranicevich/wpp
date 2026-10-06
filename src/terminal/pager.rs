@@ -11,12 +11,7 @@ use crossterm::{
 
 use crate::app::services::messages::MessagePager;
 use crate::whatsapp::client::RealtimeListener;
-use crate::whatsapp::models::{
-  Chat,
-  Message,
-  MessageDirection,
-  RealtimeEvent,
-};
+use crate::whatsapp::models::{Chat, Message, MessageDirection, RealtimeEvent};
 
 const BUBBLE_MAX_WIDTH_RATIO: usize = 60;
 const BUBBLE_MIN_WIDTH: usize = 12;
@@ -29,13 +24,7 @@ pub async fn run_with_listener(
 ) -> anyhow::Result<()> {
   let mut terminal = TerminalGuard::enter()?;
 
-  let result = run_loop(
-    &mut terminal.stdout,
-    chat,
-    pager,
-    Some(listener),
-  )
-  .await;
+  let result = run_loop(&mut terminal.stdout, chat, pager, Some(listener)).await;
 
   drop(terminal);
 
@@ -88,13 +77,7 @@ async fn run_loop(
         scroll_top
       };
 
-      let result = draw(
-        stdout,
-        chat,
-        pager,
-        requested_scroll,
-        composer.as_ref(),
-      )?;
+      let result = draw(stdout, chat, pager, requested_scroll, composer.as_ref())?;
 
       scroll_top = result.0;
       max_scroll = result.1;
@@ -123,9 +106,7 @@ async fn run_loop(
               redraw = true;
             }
 
-            KeyCode::Enter
-              if key.modifiers.contains(KeyModifiers::SHIFT) =>
-            {
+            KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) => {
               current_composer.insert('\n');
               redraw = true;
             }
@@ -193,13 +174,7 @@ async fn run_loop(
               scroll_top
             };
 
-            let result = draw(
-              stdout,
-              chat,
-              pager,
-              requested_scroll,
-              composer.as_ref(),
-            )?;
+            let result = draw(stdout, chat, pager, requested_scroll, composer.as_ref())?;
 
             scroll_top = result.0;
             max_scroll = result.1;
@@ -214,16 +189,12 @@ async fn run_loop(
             break;
           }
 
-          KeyCode::Char('c')
-            if key.modifiers.contains(KeyModifiers::CONTROL) =>
-          {
+          KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             break;
           }
 
           // Ctrl+Space enters message composition mode.
-          KeyCode::Char(' ')
-            if key.modifiers.contains(KeyModifiers::CONTROL) =>
-          {
+          KeyCode::Char(' ') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             composer = Some(Composer::default());
 
             redraw = true;
@@ -240,26 +211,20 @@ async fn run_loop(
                * Preserve a semantic viewport anchor instead of
                * relying only on the number of newly rendered lines.
                */
-              let before_content =
-                render_messages(chat, pager.messages(), width);
+              let before_content = render_messages(chat, pager.messages(), width);
 
-              let anchor =
-                capture_viewport_anchor(&before_content, scroll_top);
+              let anchor = capture_viewport_anchor(&before_content, scroll_top);
 
               pager.load_older().await?;
 
-              let after_content =
-                render_messages(chat, pager.messages(), width);
+              let after_content = render_messages(chat, pager.messages(), width);
 
               if let Some(anchor) = anchor {
-                if let Some(restored_scroll) =
-                  restore_viewport_anchor(&after_content, &anchor)
-                {
+                if let Some(restored_scroll) = restore_viewport_anchor(&after_content, &anchor) {
                   scroll_top = restored_scroll;
                   redraw = true;
                 } else {
-                  let added_lines =
-                    after_content.len().saturating_sub(before_content.len());
+                  let added_lines = after_content.len().saturating_sub(before_content.len());
 
                   if added_lines > 0 {
                     scroll_top = added_lines;
@@ -267,8 +232,7 @@ async fn run_loop(
                   }
                 }
               } else {
-                let added_lines =
-                  after_content.len().saturating_sub(before_content.len());
+                let added_lines = after_content.len().saturating_sub(before_content.len());
 
                 if added_lines > 0 {
                   scroll_top = added_lines;
@@ -288,8 +252,7 @@ async fn run_loop(
           }
 
           KeyCode::PageUp => {
-            let next =
-              scroll_top.saturating_sub(body_height.max(1));
+            let next = scroll_top.saturating_sub(body_height.max(1));
 
             if next != scroll_top {
               scroll_top = next;
@@ -336,13 +299,7 @@ async fn run_loop(
         scroll_top
       };
 
-      let result = draw(
-        stdout,
-        chat,
-        pager,
-        requested_scroll,
-        composer.as_ref(),
-      )?;
+      let result = draw(stdout, chat, pager, requested_scroll, composer.as_ref())?;
 
       scroll_top = result.0;
       max_scroll = result.1;
@@ -372,23 +329,13 @@ fn draw(
 
   let body_height = height.saturating_sub(reserved_lines);
 
-  let content = render_messages(
-    chat,
-    pager.messages(),
-    width,
-  );
+  let content = render_messages(chat, pager.messages(), width);
 
-  let max_scroll =
-    content.len().saturating_sub(body_height);
+  let max_scroll = content.len().saturating_sub(body_height);
 
-  let scroll_top =
-    requested_scroll.min(max_scroll);
+  let scroll_top = requested_scroll.min(max_scroll);
 
-  execute!(
-    stdout,
-    cursor::MoveTo(0, 0),
-    Clear(ClearType::All),
-  )?;
+  execute!(stdout, cursor::MoveTo(0, 0), Clear(ClearType::All),)?;
 
   let title = if chat.name.trim().is_empty() {
     &chat.id
@@ -397,11 +344,7 @@ fn draw(
   };
 
   let title_line = truncate_line(
-    &format!(
-      " {} ({} loaded)",
-      title,
-      pager.messages().len(),
-    ),
+    &format!(" {} ({} loaded)", title, pager.messages().len(),),
     width,
   );
 
@@ -411,9 +354,7 @@ fn draw(
 
   write!(stdout, "{separator}\r\n")?;
 
-  for index in
-    scroll_top..scroll_top.saturating_add(body_height)
-  {
+  for index in scroll_top..scroll_top.saturating_add(body_height) {
     if let Some(line) = content.get(index) {
       draw_line(stdout, line, width)?;
     } else {
@@ -424,11 +365,7 @@ fn draw(
   write!(stdout, "{separator}\r\n")?;
 
   if let Some(composer) = composer {
-    draw_composer(
-      stdout,
-      composer,
-      width,
-    )?;
+    draw_composer(stdout, composer, width)?;
   }
 
   let footer = if composer.is_some() {
@@ -437,19 +374,11 @@ fn draw(
     " ↑↓ / j/k  PgUp/PgDn  Home/End  Ctrl+Space: message  q/Esc "
   };
 
-  write!(
-    stdout,
-    "{}",
-    truncate_line(footer, width),
-  )?;
+  write!(stdout, "{}", truncate_line(footer, width),)?;
 
   stdout.flush()?;
 
-  Ok((
-    scroll_top,
-    max_scroll,
-    body_height,
-  ))
+  Ok((scroll_top, max_scroll, body_height))
 }
 
 #[derive(Debug, Clone)]
@@ -474,13 +403,8 @@ struct ViewportAnchor {
   screen_row: usize,
 }
 
-fn capture_viewport_anchor(
-  content: &[RenderedLine],
-  scroll_top: usize,
-) -> Option<ViewportAnchor> {
-  for (line_index, line) in
-    content.iter().enumerate().skip(scroll_top)
-  {
+fn capture_viewport_anchor(content: &[RenderedLine], scroll_top: usize) -> Option<ViewportAnchor> {
+  for (line_index, line) in content.iter().enumerate().skip(scroll_top) {
     let Some(message_id) = line.message_id.as_ref() else {
       continue;
     };
@@ -494,20 +418,13 @@ fn capture_viewport_anchor(
   None
 }
 
-fn restore_viewport_anchor(
-  content: &[RenderedLine],
-  anchor: &ViewportAnchor,
-) -> Option<usize> {
+fn restore_viewport_anchor(content: &[RenderedLine], anchor: &ViewportAnchor) -> Option<usize> {
   for (line_index, line) in content.iter().enumerate() {
-    if line.message_id.as_deref()
-      != Some(anchor.message_id.as_str())
-    {
+    if line.message_id.as_deref() != Some(anchor.message_id.as_str()) {
       continue;
     }
 
-    return Some(
-      line_index.saturating_sub(anchor.screen_row)
-    );
+    return Some(line_index.saturating_sub(anchor.screen_row));
   }
 
   None
@@ -551,8 +468,7 @@ impl Composer {
   }
 
   fn move_right(&mut self) {
-    self.cursor =
-      self.cursor.saturating_add(1).min(self.chars.len());
+    self.cursor = self.cursor.saturating_add(1).min(self.chars.len());
   }
 
   fn move_home(&mut self) {
@@ -587,26 +503,17 @@ fn draw_composer(
     0
   };
 
-  let end =
-    (start + available).min(composer.chars.len());
+  let end = (start + available).min(composer.chars.len());
 
-  let visible = composer.chars[start..end]
-    .iter()
-    .collect::<String>();
+  let visible = composer.chars[start..end].iter().collect::<String>();
 
-  let cursor_offset =
-    cursor.saturating_sub(start);
+  let cursor_offset = cursor.saturating_sub(start);
 
-  let mut line =
-    String::with_capacity(
-      prefix.len() + visible.len() + 1,
-    );
+  let mut line = String::with_capacity(prefix.len() + visible.len() + 1);
 
   line.push_str(prefix);
 
-  for (index, character) in
-    visible.chars().enumerate()
-  {
+  for (index, character) in visible.chars().enumerate() {
     if index == cursor_offset {
       line.push('▌');
     }
@@ -624,33 +531,23 @@ fn draw_composer(
 
   write!(stdout, "{line}")?;
 
-  let padding =
-    terminal_width.saturating_sub(line.chars().count());
+  let padding = terminal_width.saturating_sub(line.chars().count());
 
-  write!(
-    stdout,
-    "{}",
-    " ".repeat(padding),
-  )?;
+  write!(stdout, "{}", " ".repeat(padding),)?;
 
   write!(stdout, "\r\n")?;
 
   Ok(())
 }
 
-fn realtime_message(
-  event: &RealtimeEvent,
-) -> Option<Message> {
+fn realtime_message(event: &RealtimeEvent) -> Option<Message> {
   if event.event != "message.received" {
     return None;
   }
 
   let data = &event.data;
 
-  let id = data
-    .get("id")
-    .and_then(|value| value.as_str())?
-    .to_string();
+  let id = data.get("id").and_then(|value| value.as_str())?.to_string();
 
   let chat_id = data
     .get("chatId")
@@ -680,9 +577,7 @@ fn realtime_message(
     .unwrap_or("text")
     .to_string();
 
-  let timestamp = data
-    .get("timestamp")
-    .and_then(|value| value.as_i64());
+  let timestamp = data.get("timestamp").and_then(|value| value.as_i64());
 
   let from_me = data
     .get("fromMe")
@@ -712,16 +607,10 @@ fn realtime_message(
   })
 }
 
-fn render_messages(
-  chat: &Chat,
-  messages: &[Message],
-  terminal_width: usize,
-) -> Vec<RenderedLine> {
+fn render_messages(chat: &Chat, messages: &[Message], terminal_width: usize) -> Vec<RenderedLine> {
   let mut lines = Vec::new();
 
-  let max_bubble_width =
-    ((terminal_width * BUBBLE_MAX_WIDTH_RATIO) / 100)
-      .max(BUBBLE_MIN_WIDTH);
+  let max_bubble_width = ((terminal_width * BUBBLE_MAX_WIDTH_RATIO) / 100).max(BUBBLE_MIN_WIDTH);
 
   let mut index = 0;
 
@@ -731,12 +620,11 @@ fn render_messages(
     let direction = first.direction;
     let sender = message_group_key(chat, first);
 
-    let color =
-      if direction == MessageDirection::Incoming {
-        Some(sender_color(&sender))
-      } else {
-        None
-      };
+    let color = if direction == MessageDirection::Incoming {
+      Some(sender_color(&sender))
+    } else {
+      None
+    };
 
     let start = index;
 
@@ -781,8 +669,7 @@ fn render_group(
   max_bubble_width: usize,
   lines: &mut Vec<RenderedLine>,
 ) {
-  let incoming =
-    direction == MessageDirection::Incoming;
+  let incoming = direction == MessageDirection::Incoming;
 
   let alignment = if incoming {
     Alignment::Left
@@ -805,8 +692,7 @@ fn render_group(
     .saturating_sub(MESSAGE_PREFIX_WIDTH)
     .max(1);
 
-  let mut messages_lines =
-    Vec::<Vec<String>>::new();
+  let mut messages_lines = Vec::<Vec<String>>::new();
 
   for message in messages {
     let body = message_body(message);
@@ -818,18 +704,15 @@ fn render_group(
   let longest_message_line = messages_lines
     .iter()
     .flat_map(|group| group.iter())
-    .map(|line| {
-      line.chars().count() + MESSAGE_PREFIX_WIDTH
-    })
+    .map(|line| line.chars().count() + MESSAGE_PREFIX_WIDTH)
     .max()
     .unwrap_or(MESSAGE_PREFIX_WIDTH);
 
-  let sender_line_width =
-    if incoming {
-      sender.chars().count() + 3
-    } else {
-      0
-    };
+  let sender_line_width = if incoming {
+    sender.chars().count() + 3
+  } else {
+    0
+  };
 
   let inner_width = longest_message_line
     .max(sender_line_width)
@@ -846,18 +729,11 @@ fn render_group(
       format!("╭─ {sender} ")
     };
 
-    let prefix_width =
-      prefix.chars().count();
+    let prefix_width = prefix.chars().count();
 
-    let remaining = inner_width
-      .saturating_add(2)
-      .saturating_sub(prefix_width);
+    let remaining = inner_width.saturating_add(2).saturating_sub(prefix_width);
 
-    let mut top =
-      format!(
-        "{prefix}{}╮",
-        "─".repeat(remaining),
-      );
+    let mut top = format!("{prefix}{}╮", "─".repeat(remaining),);
 
     top = fit_line(&top, bubble_width);
 
@@ -870,10 +746,7 @@ fn render_group(
   } else {
     lines.push(RenderedLine {
       alignment,
-      text: format!(
-        "╭{}╮",
-        "─".repeat(inner_width),
-      ),
+      text: format!("╭{}╮", "─".repeat(inner_width),),
       color: None,
       message_id: None,
     });
@@ -883,40 +756,21 @@ fn render_group(
   //
   // A new `•` means a new WhatsApp message.
   // Two spaces indicate a continuation line.
-  for (
-    message_index,
-    message_lines,
-  ) in messages_lines.into_iter().enumerate()
-  {
+  for (message_index, message_lines) in messages_lines.into_iter().enumerate() {
     let message_id = messages
       .get(message_index)
       .map(|message| message.id.clone());
 
-    for (
-      line_index,
-      line,
-    ) in message_lines.into_iter().enumerate()
-    {
-      let prefix =
-        if line_index == 0 {
-          "• "
-        } else {
-          "  "
-        };
+    for (line_index, line) in message_lines.into_iter().enumerate() {
+      let prefix = if line_index == 0 { "• " } else { "  " };
 
       let text_width = line.chars().count();
 
-      let used_width =
-        prefix.chars().count() + text_width;
+      let used_width = prefix.chars().count() + text_width;
 
-      let padding =
-        inner_width.saturating_sub(used_width);
+      let padding = inner_width.saturating_sub(used_width);
 
-      let rendered =
-        format!(
-          "│{prefix}{line}{}│",
-          " ".repeat(padding),
-        );
+      let rendered = format!("│{prefix}{line}{}│", " ".repeat(padding),);
 
       lines.push(RenderedLine {
         alignment,
@@ -934,10 +788,7 @@ fn render_group(
   // Bottom border.
   lines.push(RenderedLine {
     alignment,
-    text: format!(
-      "╰{}╯",
-      "─".repeat(inner_width),
-    ),
+    text: format!("╰{}╯", "─".repeat(inner_width),),
     color: None,
     message_id: None,
   });
@@ -948,27 +799,18 @@ fn draw_line(
   line: &RenderedLine,
   terminal_width: usize,
 ) -> anyhow::Result<()> {
-  let text_width =
-    line.text.chars().count();
+  let text_width = line.text.chars().count();
 
   let left_padding = match line.alignment {
     Alignment::Left => 0,
 
-    Alignment::Right =>
-      terminal_width.saturating_sub(text_width),
+    Alignment::Right => terminal_width.saturating_sub(text_width),
   };
 
-  write!(
-    stdout,
-    "{}",
-    " ".repeat(left_padding),
-  )?;
+  write!(stdout, "{}", " ".repeat(left_padding),)?;
 
   if let Some(color) = line.color {
-    execute!(
-      stdout,
-      SetForegroundColor(color),
-    )?;
+    execute!(stdout, SetForegroundColor(color),)?;
   }
 
   // Message lines are already wrapped to fit.
@@ -983,13 +825,9 @@ fn draw_line(
   Ok(())
 }
 
-fn message_group_key(
-  chat: &Chat,
-  message: &Message,
-) -> String {
+fn message_group_key(chat: &Chat, message: &Message) -> String {
   match message.direction {
-    MessageDirection::Outgoing =>
-      "outgoing".to_string(),
+    MessageDirection::Outgoing => "outgoing".to_string(),
 
     MessageDirection::Incoming => {
       if chat.is_group {
@@ -1024,9 +862,7 @@ fn sender_color(sender: &str) -> Color {
   let mut hash = 0usize;
 
   for byte in sender.as_bytes() {
-    hash =
-      hash.wrapping_mul(31)
-        .wrapping_add(*byte as usize);
+    hash = hash.wrapping_mul(31).wrapping_add(*byte as usize);
   }
 
   colors[hash % colors.len()]
@@ -1066,10 +902,7 @@ fn message_body(message: &Message) -> String {
   }
 }
 
-fn wrap_text(
-  text: &str,
-  width: usize,
-) -> Vec<String> {
+fn wrap_text(text: &str, width: usize) -> Vec<String> {
   if width == 0 {
     return vec![String::new()];
   }
@@ -1082,8 +915,7 @@ fn wrap_text(
       continue;
     }
 
-    let words: Vec<&str> =
-      paragraph.split_whitespace().collect();
+    let words: Vec<&str> = paragraph.split_whitespace().collect();
 
     if words.is_empty() {
       result.push(String::new());
@@ -1093,8 +925,7 @@ fn wrap_text(
     let mut current = String::new();
 
     for word in words {
-      let word_width =
-        word.chars().count();
+      let word_width = word.chars().count();
 
       if word_width > width {
         if !current.is_empty() {
@@ -1117,14 +948,9 @@ fn wrap_text(
         continue;
       }
 
-      let separator =
-        if current.is_empty() { 0 } else { 1 };
+      let separator = if current.is_empty() { 0 } else { 1 };
 
-      if current.chars().count()
-        + separator
-        + word_width
-        <= width
-      {
+      if current.chars().count() + separator + word_width <= width {
         if !current.is_empty() {
           current.push(' ');
         }
@@ -1144,32 +970,21 @@ fn wrap_text(
   result
 }
 
-fn fit_line(
-  value: &str,
-  width: usize,
-) -> String {
-  let value_width =
-    value.chars().count();
+fn fit_line(value: &str, width: usize) -> String {
+  let value_width = value.chars().count();
 
   if value_width == width {
     return value.to_string();
   }
 
   if value_width < width {
-    return format!(
-      "{}{}",
-      value,
-      " ".repeat(width - value_width),
-    );
+    return format!("{}{}", value, " ".repeat(width - value_width),);
   }
 
   truncate_line(value, width)
 }
 
-fn truncate_line(
-  value: &str,
-  max_chars: usize,
-) -> String {
+fn truncate_line(value: &str, max_chars: usize) -> String {
   if max_chars == 0 {
     return String::new();
   }
@@ -1208,11 +1023,7 @@ impl TerminalGuard {
 
     let mut stdout = io::stdout();
 
-    if let Err(error) = execute!(
-      stdout,
-      EnterAlternateScreen,
-      cursor::Hide,
-    ) {
+    if let Err(error) = execute!(stdout, EnterAlternateScreen, cursor::Hide,) {
       let _ = terminal::disable_raw_mode();
 
       return Err(error.into());
@@ -1224,11 +1035,7 @@ impl TerminalGuard {
 
 impl Drop for TerminalGuard {
   fn drop(&mut self) {
-    let _ = execute!(
-      self.stdout,
-      cursor::Show,
-      LeaveAlternateScreen,
-    );
+    let _ = execute!(self.stdout, cursor::Show, LeaveAlternateScreen,);
 
     let _ = terminal::disable_raw_mode();
   }
@@ -1237,11 +1044,7 @@ impl Drop for TerminalGuard {
 #[cfg(test)]
 mod tests {
   use super::{
-    capture_viewport_anchor,
-    restore_viewport_anchor,
-    Alignment,
-    Composer,
-    RenderedLine,
+    capture_viewport_anchor, restore_viewport_anchor, Alignment, Composer, RenderedLine,
   };
 
   #[test]
@@ -1300,9 +1103,7 @@ mod tests {
     assert_eq!(composer.text(), "a\nb");
   }
 
-  fn line(
-    message_id: Option<&str>,
-  ) -> RenderedLine {
+  fn line(message_id: Option<&str>) -> RenderedLine {
     RenderedLine {
       alignment: Alignment::Left,
       text: String::new(),
@@ -1320,14 +1121,9 @@ mod tests {
       line(Some("message-2")),
     ];
 
-    let anchor =
-      capture_viewport_anchor(&before, 0)
-        .expect("expected a viewport anchor");
+    let anchor = capture_viewport_anchor(&before, 0).expect("expected a viewport anchor");
 
-    assert_eq!(
-      anchor.message_id,
-      "message-1"
-    );
+    assert_eq!(anchor.message_id, "message-1");
 
     assert_eq!(anchor.screen_row, 1);
 
@@ -1341,56 +1137,28 @@ mod tests {
     ];
 
     let restored =
-      restore_viewport_anchor(
-        &after,
-        &anchor,
-      )
-      .expect("expected the anchor to be restored");
+      restore_viewport_anchor(&after, &anchor).expect("expected the anchor to be restored");
 
     assert_eq!(restored, 2);
 
-    assert_eq!(
-      restored + anchor.screen_row,
-      3
-    );
+    assert_eq!(restored + anchor.screen_row, 3);
   }
 
   #[test]
   fn viewport_anchor_returns_none_when_no_messages_are_visible() {
-    let content = vec![
-      line(None),
-      line(None),
-      line(None),
-    ];
+    let content = vec![line(None), line(None), line(None)];
 
-    assert!(
-      capture_viewport_anchor(&content, 0)
-        .is_none()
-    );
+    assert!(capture_viewport_anchor(&content, 0).is_none());
   }
 
   #[test]
   fn viewport_anchor_returns_none_when_message_disappears() {
-    let before = vec![
-      line(None),
-      line(Some("message-1")),
-    ];
+    let before = vec![line(None), line(Some("message-1"))];
 
-    let anchor =
-      capture_viewport_anchor(&before, 0)
-        .expect("expected a viewport anchor");
+    let anchor = capture_viewport_anchor(&before, 0).expect("expected a viewport anchor");
 
-    let after = vec![
-      line(None),
-      line(Some("message-2")),
-    ];
+    let after = vec![line(None), line(Some("message-2"))];
 
-    assert!(
-      restore_viewport_anchor(
-        &after,
-        &anchor,
-      )
-      .is_none()
-    );
+    assert!(restore_viewport_anchor(&after, &anchor,).is_none());
   }
 }

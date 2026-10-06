@@ -2,23 +2,15 @@ use crate::app::state::AppContext;
 use crate::whatsapp::models::RealtimeEvent;
 
 pub async fn run() -> anyhow::Result<()> {
-  let context =
-    AppContext::load().await?;
+  let context = AppContext::load().await?;
 
-  let session_id =
-    context.session.entry.id.clone();
+  let session_id = context.session.entry.id.clone();
 
-  let mut listener =
-    context.whatsapp
-      .listen(&session_id)
-      .await?;
+  let mut listener = context.whatsapp.listen(&session_id).await?;
 
-  println!(
-    "Listening for incoming messages. Press Ctrl+C to stop."
-  );
+  println!("Listening for incoming messages. Press Ctrl+C to stop.");
 
-  let ctrl_c =
-    tokio::signal::ctrl_c();
+  let ctrl_c = tokio::signal::ctrl_c();
 
   tokio::pin!(ctrl_c);
 
@@ -40,19 +32,12 @@ pub async fn run() -> anyhow::Result<()> {
   Ok(())
 }
 
-fn print_event(
-  event: &RealtimeEvent,
-) {
+fn print_event(event: &RealtimeEvent) {
   let sender = event
     .data
     .get("author")
     .and_then(|value| value.as_str())
-    .or_else(|| {
-      event
-        .data
-        .get("from")
-        .and_then(|value| value.as_str())
-    })
+    .or_else(|| event.data.get("from").and_then(|value| value.as_str()))
     .unwrap_or("unknown");
 
   let chat_id = event
@@ -66,19 +51,8 @@ fn print_event(
     .get("body")
     .and_then(|value| value.as_str())
     .filter(|body| !body.trim().is_empty())
-    .or_else(|| {
-      event
-        .data
-        .get("type")
-        .and_then(|value| value.as_str())
-    })
+    .or_else(|| event.data.get("type").and_then(|value| value.as_str()))
     .unwrap_or("message");
 
-  println!(
-    "[{}] {} → {}: {}",
-    event.timestamp,
-    sender,
-    chat_id,
-    body
-  );
+  println!("[{}] {} → {}: {}", event.timestamp, sender, chat_id, body);
 }

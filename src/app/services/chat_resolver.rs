@@ -20,34 +20,23 @@ pub struct ChatResolver<'a> {
 }
 
 impl<'a> ChatResolver<'a> {
-  pub fn new(
-    whatsapp: &'a WhatsAppClient,
-    session_id: &'a str,
-  ) -> Self {
+  pub fn new(whatsapp: &'a WhatsAppClient, session_id: &'a str) -> Self {
     Self {
       whatsapp,
       session_id,
     }
   }
 
-  pub async fn resolve(
-    &self,
-    query: &str,
-  ) -> Result<Chat, WppError> {
+  pub async fn resolve(&self, query: &str) -> Result<Chat, WppError> {
     let query = query.trim();
 
     if query.is_empty() {
       return Err(WppError::Other(
-        "chat name or phone number cannot be empty"
-          .to_string(),
+        "chat name or phone number cannot be empty".to_string(),
       ));
     }
 
-    if let Some(chat) = self
-      .whatsapp
-      .get_chat_by_id(self.session_id, query)
-      .await?
-    {
+    if let Some(chat) = self.whatsapp.get_chat_by_id(self.session_id, query).await? {
       return Ok(chat);
     }
 
@@ -56,10 +45,7 @@ impl<'a> ChatResolver<'a> {
     if !normalized_query.is_empty() {
       let phone_matches = self
         .whatsapp
-        .find_chats_by_phone(
-          self.session_id,
-          &normalized_query,
-        )
+        .find_chats_by_phone(self.session_id, &normalized_query)
         .await?;
 
       match phone_matches.as_slice() {
@@ -68,10 +54,7 @@ impl<'a> ChatResolver<'a> {
         }
         [] => {}
         _ => {
-          return Err(ambiguous_chat_error(
-            query,
-            &phone_matches,
-          ));
+          return Err(ambiguous_chat_error(query, &phone_matches));
         }
       }
     }
@@ -88,13 +71,8 @@ impl<'a> ChatResolver<'a> {
 
     match name_matches.as_slice() {
       [chat] => Ok(chat.clone()),
-      [] => Err(WppError::Other(format!(
-        "chat `{query}` not found"
-      ))),
-      _ => Err(ambiguous_chat_error(
-        query,
-        &name_matches,
-      )),
+      [] => Err(WppError::Other(format!("chat `{query}` not found"))),
+      _ => Err(ambiguous_chat_error(query, &name_matches)),
     }
   }
 
@@ -105,11 +83,7 @@ impl<'a> ChatResolver<'a> {
     loop {
       let page = self
         .whatsapp
-        .list_chats(
-          self.session_id,
-          PAGE_SIZE,
-          offset,
-        )
+        .list_chats(self.session_id, PAGE_SIZE, offset)
         .await?;
 
       let page_len = page.len();
@@ -127,16 +101,10 @@ impl<'a> ChatResolver<'a> {
 }
 
 fn normalize_phone(value: &str) -> String {
-  value
-    .chars()
-    .filter(|c| c.is_ascii_digit())
-    .collect()
+  value.chars().filter(|c| c.is_ascii_digit()).collect()
 }
 
-fn ambiguous_chat_error(
-  query: &str,
-  matches: &[Chat],
-) -> WppError {
+fn ambiguous_chat_error(query: &str, matches: &[Chat]) -> WppError {
   let candidates = matches
     .iter()
     .take(10)
@@ -152,15 +120,9 @@ fn ambiguous_chat_error(
     .collect::<Vec<_>>()
     .join(", ");
 
-  let suffix = if matches.len() > 10 {
-    ", ..."
-  } else {
-    ""
-  };
+  let suffix = if matches.len() > 10 { ", ..." } else { "" };
 
-  WppError::Other(format!(
-    "chat `{query}` is ambiguous: {candidates}{suffix}"
-  ))
+  WppError::Other(format!("chat `{query}` is ambiguous: {candidates}{suffix}"))
 }
 
 #[cfg(test)]
@@ -169,18 +131,12 @@ mod tests {
 
   #[test]
   fn normalize_phone_removes_formatting() {
-    assert_eq!(
-      normalize_phone("+54 9 351 123-4567"),
-      "5493511234567"
-    );
+    assert_eq!(normalize_phone("+54 9 351 123-4567"), "5493511234567");
   }
 
   #[test]
   fn normalize_phone_keeps_digits_from_chat_id() {
-    assert_eq!(
-      normalize_phone("5493511234567@c.us"),
-      "5493511234567"
-    );
+    assert_eq!(normalize_phone("5493511234567@c.us"), "5493511234567");
   }
 
   #[test]

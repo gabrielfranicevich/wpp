@@ -1,44 +1,24 @@
 use anyhow::Result;
 use crossterm::style::Stylize;
-use std::time::{
-  Duration,
-  Instant,
-  SystemTime,
-  UNIX_EPOCH,
-};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use crate::app::config::{
-  Config,
-  SessionEntry,
-};
+use crate::app::config::{Config, SessionEntry};
 use crate::terminal::render::render_qr_payload;
-use crate::whatsapp::native::{
-  NativeAuthEvent,
-  NativeAuthMode,
-  NativeClient,
-};
+use crate::whatsapp::native::{NativeAuthEvent, NativeAuthMode, NativeClient};
 
-const AUTH_TIMEOUT: Duration =
-  Duration::from_secs(180);
+const AUTH_TIMEOUT: Duration = Duration::from_secs(180);
 
-const CONNECTED_CHECK_TIMEOUT: Duration =
-  Duration::from_secs(30);
+const CONNECTED_CHECK_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// `wpp login [PHONE] [--phone NUMBER] [--qr] [--alias NAME]`
 ///
 /// Creates or reuses a native whatsapp-rust session,
 /// shows a QR code or pairing code, waits for authentication,
 /// and saves the session to config.
-pub async fn run(
-  phone: Option<String>,
-  alias: Option<String>,
-) -> Result<()> {
-  let mut config =
-    Config::load()?;
+pub async fn run(phone: Option<String>, alias: Option<String>) -> Result<()> {
+  let mut config = Config::load()?;
 
-  if let Some(ref alias) =
-    alias
-  {
+  if let Some(ref alias) = alias {
     if config.alias_exists(alias) {
       eprintln!(
         "{}",
@@ -55,101 +35,54 @@ pub async fn run(
     }
   }
 
-  let (
-    session_id,
-    existing_alias,
-  ) = match phone.as_deref() {
-    Some(phone) => {
-      match find_native_session_by_phone(
-        &config,
-        phone,
-      )? {
-        Some(selection) =>
-          selection,
+  let (session_id, existing_alias) = match phone.as_deref() {
+    Some(phone) => match find_native_session_by_phone(&config, phone)? {
+      Some(selection) => selection,
 
-        None => (
-          generate_native_session_id(),
-          None,
-        ),
-      }
-    }
+      None => (generate_native_session_id(), None),
+    },
 
-    None => (
-      generate_native_session_id(),
-      None,
-    ),
+    None => (generate_native_session_id(), None),
   };
 
-  let auth_mode =
-    match phone.as_deref() {
-      Some(phone) => {
-        eprintln!(
-          "{}",
-          " Starting native WhatsApp session..."
-            .dark_grey()
-        );
+  let auth_mode = match phone.as_deref() {
+    Some(phone) => {
+      eprintln!("{}", " Starting native WhatsApp session...".dark_grey());
 
-        NativeAuthMode::PairingCode(
-          phone.to_string(),
-        )
-      }
+      NativeAuthMode::PairingCode(phone.to_string())
+    }
 
-      None => {
-        eprintln!(
-          "{}",
-          " Starting native WhatsApp session..."
-            .dark_grey()
-        );
+    None => {
+      eprintln!("{}", " Starting native WhatsApp session...".dark_grey());
 
-        NativeAuthMode::Qr
-      }
-    };
+      NativeAuthMode::Qr
+    }
+  };
 
   if existing_alias.is_some() {
-    eprintln!(
-      "{}",
-      " Reusing existing native session..."
-        .cyan()
-    );
+    eprintln!("{}", " Reusing existing native session...".cyan());
   }
 
-  let storage_path =
-    config.native_session_path(
-      &session_id
-    )?;
+  let storage_path = config.native_session_path(&session_id)?;
 
-  let mut client =
-    NativeClient::open(
-      &storage_path,
-      auth_mode,
-    )
-    .await?;
+  let mut client = NativeClient::open(&storage_path, auth_mode).await?;
 
-  let authenticated =
-    authenticate(
-      &mut client,
-      phone.is_some(),
-    )
-    .await;
+  let authenticated = authenticate(&mut client, phone.is_some()).await;
 
-  if let Err(error) =
-    authenticated
-  {
+  if let Err(error) = authenticated {
     client.shutdown().await;
     return Err(error);
   }
 
-  let authenticated_phone =
-    client.phone().or_else(|| {
-      phone
-        .as_deref()
-        .map(normalize_phone)
-        .filter(|value| !value.is_empty())
-    });
+  let authenticated_phone = client.phone().or_else(|| {
+    phone
+      .as_deref()
+      .map(normalize_phone)
+      .filter(|value| !value.is_empty())
+  });
 
   let push_name = {
-    let push_name =
-      client.push_name();
+    let push_name = client.push_name();
 
     if push_name.trim().is_empty() {
       None
@@ -158,9 +91,7 @@ pub async fn run(
     }
   };
 
-  let Some(authenticated_phone) =
-    authenticated_phone
-  else {
+  let Some(authenticated_phone) = authenticated_phone else {
     client.shutdown().await;
 
     anyhow::bail!(
@@ -171,58 +102,31 @@ pub async fn run(
 
   client.shutdown().await;
 
-  let final_alias =
-    alias
-      .or(existing_alias)
-      .unwrap_or_else(|| {
-        config.next_session_alias(
-          Some(&authenticated_phone),
-        )
-      });
+  let final_alias = alias
+    .or(existing_alias)
+    .unwrap_or_else(|| config.next_session_alias(Some(&authenticated_phone)));
 
   config.upsert_session(
     SessionEntry {
-      id:
-        session_id.clone(),
-      aliases:
-        Vec::new(),
-      phone:
-        Some(
-          authenticated_phone.clone()
-        ),
-      push_name:
-        push_name.clone(),
+      id: session_id.clone(),
+      aliases: Vec::new(),
+      phone: Some(authenticated_phone.clone()),
+      push_name: push_name.clone(),
     },
     final_alias.clone(),
   )?;
 
-  config.active_session =
-    Some(final_alias.clone());
+  config.active_session = Some(final_alias.clone());
 
   config.save()?;
 
-  let who =
-    push_name
-      .as_deref()
-      .unwrap_or(
-        &authenticated_phone
-      );
+  let who = push_name.as_deref().unwrap_or(&authenticated_phone);
 
-  println!(
-    " {} Logged in as {}",
-    "✓".green().bold(),
-    who.bold()
-  );
+  println!(" {} Logged in as {}", "✓".green().bold(), who.bold());
 
-  println!(
-    " Phone: {}",
-    authenticated_phone
-  );
+  println!(" Phone: {}", authenticated_phone);
 
-  println!(
-    " Alias: {}",
-    final_alias
-  );
+  println!(" Alias: {}", final_alias);
 
   Ok(())
 }
@@ -232,15 +136,10 @@ pub async fn run(
 /// QR and pairing-code payloads arrive through
 /// `NativeAuthEvent`, while the final authentication state
 /// is confirmed by `wait_for_connected`.
-async fn authenticate(
-  client: &mut NativeClient,
-  pairing: bool,
-) -> Result<()> {
+async fn authenticate(client: &mut NativeClient, pairing: bool) -> Result<()> {
   if client.is_logged_in() {
     client
-      .wait_for_connected(
-        CONNECTED_CHECK_TIMEOUT,
-      )
+      .wait_for_connected(CONNECTED_CHECK_TIMEOUT)
       .await
       .map_err(|error| {
         anyhow::anyhow!(
@@ -260,101 +159,63 @@ async fn authenticate(
     );
     println!();
   } else {
-    eprintln!(
-      "{}",
-      " Waiting for QR code..."
-        .dark_grey()
-    );
+    eprintln!("{}", " Waiting for QR code...".dark_grey());
   }
 
-  let deadline =
-    Instant::now() + AUTH_TIMEOUT;
+  let deadline = Instant::now() + AUTH_TIMEOUT;
 
   loop {
     if client.is_logged_in() {
       break;
     }
 
-    let now =
-      Instant::now();
+    let now = Instant::now();
 
     if now >= deadline {
-      anyhow::bail!(
-        "Timed out waiting for native WhatsApp authentication."
-      );
+      anyhow::bail!("Timed out waiting for native WhatsApp authentication.");
     }
 
-    let remaining =
-      deadline.saturating_duration_since(
-        now
-      );
+    let remaining = deadline.saturating_duration_since(now);
 
-    let poll_timeout =
-      remaining.min(
-        Duration::from_millis(500)
-      );
+    let poll_timeout = remaining.min(Duration::from_millis(500));
 
-    match tokio::time::timeout(
-      poll_timeout,
-      client.next_auth_event(),
-    )
-    .await
-    {
-      Ok(Some(event)) => {
-        match event {
-          NativeAuthEvent::QrCode(code) => {
-            println!();
-            render_qr_payload(&code)?;
-            println!();
-            println!(
-              " Scan this QR with WhatsApp → \
+    match tokio::time::timeout(poll_timeout, client.next_auth_event()).await {
+      Ok(Some(event)) => match event {
+        NativeAuthEvent::QrCode(code) => {
+          println!();
+          render_qr_payload(&code)?;
+          println!();
+          println!(
+            " Scan this QR with WhatsApp → \
                Linked Devices → Link a Device"
-            );
-            println!();
-          }
-
-          NativeAuthEvent::PairCode(code) => {
-            println!(
-              " {}",
-              format_pairing_code(&code)
-                .green()
-                .bold()
-            );
-            println!();
-          }
-
-          NativeAuthEvent::PairCodeError(error) => {
-            anyhow::bail!(
-              "Could not obtain native pairing code: {}",
-              error
-            );
-          }
+          );
+          println!();
         }
-      }
+
+        NativeAuthEvent::PairCode(code) => {
+          println!(" {}", format_pairing_code(&code).green().bold());
+          println!();
+        }
+
+        NativeAuthEvent::PairCodeError(error) => {
+          anyhow::bail!("Could not obtain native pairing code: {}", error);
+        }
+      },
 
       Ok(None) => {
-        anyhow::bail!(
-          "Native authentication event channel closed."
-        );
+        anyhow::bail!("Native authentication event channel closed.");
       }
 
       Err(_) => {}
     }
   }
 
-  let remaining =
-    deadline.saturating_duration_since(
-      Instant::now()
-    );
+  let remaining = deadline.saturating_duration_since(Instant::now());
 
   client
     .wait_for_connected(remaining)
     .await
-    .map_err(|error| {
-      anyhow::anyhow!(
-        "native WhatsApp authentication failed: {error}"
-      )
-    })?;
+    .map_err(|error| anyhow::anyhow!("native WhatsApp authentication failed: {error}"))?;
 
   Ok(())
 }
@@ -366,69 +227,47 @@ fn find_native_session_by_phone(
   config: &Config,
   phone: &str,
 ) -> Result<Option<(String, Option<String>)>> {
-  let normalized_phone =
-    normalize_phone(phone);
+  let normalized_phone = normalize_phone(phone);
 
   if normalized_phone.is_empty() {
-    anyhow::bail!(
-      "phone number cannot be empty"
-    );
+    anyhow::bail!("phone number cannot be empty");
   }
 
-  let matches:
-    Vec<&SessionEntry> =
-    config
-      .sessions
-      .values()
-      .filter(|entry| {
-        entry
-          .phone
-          .as_deref()
-          .map(normalize_phone)
-          .is_some_and(
-            |entry_phone| {
-              entry_phone == normalized_phone
-            }
-          )
-      })
-      .collect();
+  let matches: Vec<&SessionEntry> = config
+    .sessions
+    .values()
+    .filter(|entry| {
+      entry
+        .phone
+        .as_deref()
+        .map(normalize_phone)
+        .is_some_and(|entry_phone| entry_phone == normalized_phone)
+    })
+    .collect();
 
   match matches.len() {
     0 => Ok(None),
 
     1 => {
-      let entry =
-        matches[0];
+      let entry = matches[0];
 
-      Ok(Some((
-        entry.id.clone(),
-        entry.aliases.first().cloned(),
-      )))
+      Ok(Some((entry.id.clone(), entry.aliases.first().cloned())))
     }
 
     _ => {
-      let descriptions =
-        matches
-          .iter()
-          .map(|entry| {
-            let aliases =
-              if entry.aliases.is_empty() {
-                String::new()
-              } else {
-                format!(
-                  " [{}]",
-                  entry.aliases.join(", ")
-                )
-              };
+      let descriptions = matches
+        .iter()
+        .map(|entry| {
+          let aliases = if entry.aliases.is_empty() {
+            String::new()
+          } else {
+            format!(" [{}]", entry.aliases.join(", "))
+          };
 
-            format!(
-              "{}{}",
-              entry.id,
-              aliases
-            )
-          })
-          .collect::<Vec<_>>()
-          .join(", ");
+          format!("{}{}", entry.id, aliases)
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
 
       anyhow::bail!(
         "Multiple native sessions match phone '{}': {}",
@@ -442,39 +281,24 @@ fn find_native_session_by_phone(
 /// Generate a unique application-level identifier for a
 /// native whatsapp-rust session.
 fn generate_native_session_id() -> String {
-  let nanos =
-    SystemTime::now()
-      .duration_since(UNIX_EPOCH)
-      .unwrap_or_default()
-      .as_nanos();
+  let nanos = SystemTime::now()
+    .duration_since(UNIX_EPOCH)
+    .unwrap_or_default()
+    .as_nanos();
 
-  format!(
-    "native-{nanos}-{}",
-    std::process::id()
-  )
+  format!("native-{nanos}-{}", std::process::id())
 }
 
 /// Normalize a phone number for exact comparison.
-fn normalize_phone(
-  value: &str,
-) -> String {
-  value
-    .chars()
-    .filter(|c| c.is_ascii_digit())
-    .collect()
+fn normalize_phone(value: &str) -> String {
+  value.chars().filter(|c| c.is_ascii_digit()).collect()
 }
 
 /// Format pairing code with a dash in the middle:
 /// "ABCD-EFGH"
-fn format_pairing_code(
-  code: &str,
-) -> String {
+fn format_pairing_code(code: &str) -> String {
   if code.len() == 8 {
-    format!(
-      "{}-{}",
-      &code[..4],
-      &code[4..]
-    )
+    format!("{}-{}", &code[..4], &code[4..])
   } else {
     code.to_string()
   }
