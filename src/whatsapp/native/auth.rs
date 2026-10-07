@@ -1,11 +1,9 @@
 use std::path::Path;
-
 use tokio::sync::mpsc;
 use whatsapp_rust::bot::Bot;
 use whatsapp_rust::pair_code::PairCodeOptions;
 use whatsapp_rust::store::SqliteStore;
 use whatsapp_rust_chat_store::ChatStore;
-
 use crate::error::WppError;
 
 use super::chats;

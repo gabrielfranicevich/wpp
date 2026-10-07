@@ -1,4 +1,6 @@
-use crate::app::services::chats::{ChatFilter as ServiceChatFilter, ChatListMode, ChatsService};
+use crate::app::services::chat_listing::{
+  ChatFilter as ServiceChatFilter, ChatListMode, ChatListingService,
+};
 use crate::app::state::AppContext;
 use crate::cli::ChatFilter;
 use crate::terminal::render::render_chats;
@@ -29,7 +31,7 @@ pub async fn run(
 
   let context = AppContext::load().await?;
 
-  let service = ChatsService::new(&context.whatsapp, &context.session.entry.id);
+  let service = ChatListingService::new(&context.whatsapp, &context.session.entry.id);
 
   let chats = service.list(mode, filter).await?;
 

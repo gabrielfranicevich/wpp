@@ -2,8 +2,8 @@ use std::collections::HashSet;
 
 use anyhow::Result;
 
+use crate::app::services::chat_listing::{ChatListMode, ChatListingService};
 use crate::app::services::chat_resolver::ChatResolver;
-use crate::app::services::chats::{ChatListMode, ChatsService};
 use crate::app::services::sync::MessageSyncService;
 use crate::app::state::AppContext;
 use crate::storage::LocalMessageStore;
@@ -69,7 +69,7 @@ async fn select_chats(
   who: Option<String>,
 ) -> Result<Vec<Chat>> {
   let Some(who) = who else {
-    let service = ChatsService::new(&context.whatsapp, session_id);
+    let service = ChatListingService::new(&context.whatsapp, session_id);
 
     return Ok(service.list(ChatListMode::All, None).await?);
   };
