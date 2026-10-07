@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use crossterm::{
   cursor,
-  event::{self, Event, KeyCode, KeyModifiers},
+  event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
   execute,
   style::{Color, ResetColor, SetForegroundColor},
   terminal::{self, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen},
@@ -100,6 +100,10 @@ async fn run_loop(
       }
 
       Event::Key(key) => {
+        if !should_process_key_event(key.kind) {
+          continue;
+        }
+
         if let Some(current_composer) = composer.as_mut() {
           match key.code {
             KeyCode::Esc => {
@@ -378,6 +382,10 @@ fn draw(
   stdout.flush()?;
 
   Ok((scroll_top, max_scroll, body_height))
+}
+
+fn should_process_key_event(kind: KeyEventKind) -> bool {
+  kind != KeyEventKind::Release
 }
 
 #[derive(Debug, Clone)]
@@ -931,7 +939,19 @@ impl Drop for TerminalGuard {
 
 #[cfg(test)]
 mod tests {
-  use super::{capture_viewport_anchor, restore_viewport_anchor, Alignment, RenderedLine};
+  use super::{
+    capture_viewport_anchor, restore_viewport_anchor, should_process_key_event, Alignment,
+    RenderedLine,
+  };
+
+  use crossterm::event::KeyEventKind;
+
+  #[test]
+  fn ignores_key_release_events_but_processes_press_and_repeat() {
+    assert!(!should_process_key_event(KeyEventKind::Release));
+    assert!(should_process_key_event(KeyEventKind::Press));
+    assert!(should_process_key_event(KeyEventKind::Repeat));
+  }
 
   fn line(message_id: Option<&str>) -> RenderedLine {
     RenderedLine {
