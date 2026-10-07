@@ -10,6 +10,7 @@ use crossterm::{
 };
 
 use crate::app::services::message_pager::MessagePager;
+use crate::terminal::composer::{draw_composer, Composer};
 use crate::whatsapp::client::RealtimeListener;
 use crate::whatsapp::models::{Chat, Message, MessageDirection, RealtimeEvent};
 
@@ -426,112 +427,6 @@ fn restore_viewport_anchor(content: &[RenderedLine], anchor: &ViewportAnchor) ->
   }
 
   None
-}
-
-#[derive(Debug, Default)]
-struct Composer {
-  chars: Vec<char>,
-  cursor: usize,
-}
-
-impl Composer {
-  fn text(&self) -> String {
-    self.chars.iter().collect()
-  }
-
-  fn insert(&mut self, character: char) {
-    self.chars.insert(self.cursor, character);
-    self.cursor += 1;
-  }
-
-  fn backspace(&mut self) {
-    if self.cursor == 0 {
-      return;
-    }
-
-    self.cursor -= 1;
-    self.chars.remove(self.cursor);
-  }
-
-  fn delete(&mut self) {
-    if self.cursor >= self.chars.len() {
-      return;
-    }
-
-    self.chars.remove(self.cursor);
-  }
-
-  fn move_left(&mut self) {
-    self.cursor = self.cursor.saturating_sub(1);
-  }
-
-  fn move_right(&mut self) {
-    self.cursor = self.cursor.saturating_add(1).min(self.chars.len());
-  }
-
-  fn move_home(&mut self) {
-    self.cursor = 0;
-  }
-
-  fn move_end(&mut self) {
-    self.cursor = self.chars.len();
-  }
-}
-
-fn draw_composer(
-  stdout: &mut io::Stdout,
-  composer: &Composer,
-  terminal_width: usize,
-) -> anyhow::Result<()> {
-  if terminal_width == 0 {
-    return Ok(());
-  }
-
-  let prefix = "> ";
-
-  let available = terminal_width
-    .saturating_sub(prefix.chars().count())
-    .saturating_sub(1);
-
-  let cursor = composer.cursor;
-
-  let start = cursor.saturating_sub(available);
-
-  let end = (start + available).min(composer.chars.len());
-
-  let visible = composer.chars[start..end].iter().collect::<String>();
-
-  let cursor_offset = cursor.saturating_sub(start);
-
-  let mut line = String::with_capacity(prefix.len() + visible.len() + 1);
-
-  line.push_str(prefix);
-
-  for (index, character) in visible.chars().enumerate() {
-    if index == cursor_offset {
-      line.push('▌');
-    }
-
-    if character == '\n' {
-      line.push('↵');
-    } else {
-      line.push(character);
-    }
-  }
-
-  if cursor_offset == visible.chars().count() {
-    line.push('▌');
-  }
-
-  write!(stdout, "{line}")?;
-
-  let padding = terminal_width.saturating_sub(line.chars().count());
-
-  write!(stdout, "{}", " ".repeat(padding),)?;
-
-  write!(stdout, "\r\n")?;
-
-  Ok(())
 }
 
 fn realtime_message(event: &RealtimeEvent) -> Option<Message> {
@@ -1036,65 +931,7 @@ impl Drop for TerminalGuard {
 
 #[cfg(test)]
 mod tests {
-  use super::{
-    capture_viewport_anchor, restore_viewport_anchor, Alignment, Composer, RenderedLine,
-  };
-
-  #[test]
-  fn composer_inserts_and_moves_cursor() {
-    let mut composer = Composer::default();
-
-    composer.insert('a');
-    composer.insert('b');
-    composer.move_left();
-    composer.insert('x');
-
-    assert_eq!(composer.text(), "axb");
-  }
-
-  #[test]
-  fn composer_backspace_deletes_before_cursor() {
-    let mut composer = Composer::default();
-
-    composer.insert('a');
-    composer.insert('b');
-    composer.backspace();
-
-    assert_eq!(composer.text(), "a");
-  }
-
-  #[test]
-  fn composer_delete_deletes_after_cursor() {
-    let mut composer = Composer::default();
-
-    composer.insert('a');
-    composer.insert('b');
-    composer.move_left();
-    composer.delete();
-
-    assert_eq!(composer.text(), "a");
-  }
-
-  #[test]
-  fn composer_supports_unicode() {
-    let mut composer = Composer::default();
-
-    composer.insert('á');
-    composer.insert('🙂');
-
-    assert_eq!(composer.text(), "á🙂");
-  }
-
-  #[test]
-  fn composer_preserves_newlines() {
-    let mut composer = Composer::default();
-
-    composer.insert('a');
-    composer.insert('\n');
-    composer.insert('b');
-
-    assert_eq!(composer.text(), "a\nb");
-  }
+  use super::{capture_viewport_anchor, restore_viewport_anchor, Alignment, RenderedLine};
 
   fn line(message_id: Option<&str>) -> RenderedLine {
     RenderedLine {
