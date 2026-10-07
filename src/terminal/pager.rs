@@ -9,7 +9,7 @@ use crossterm::{
   terminal::{self, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen},
 };
 
-use crate::app::services::messages::MessagePager;
+use crate::app::services::message_pager::MessagePager;
 use crate::whatsapp::client::RealtimeListener;
 use crate::whatsapp::models::{Chat, Message, MessageDirection, RealtimeEvent};
 

@@ -1,5 +1,6 @@
 pub mod chat_listing;
 pub mod chat_resolver;
 pub mod chats;
+pub mod message_pager;
 pub mod messages;
 pub mod sync;
