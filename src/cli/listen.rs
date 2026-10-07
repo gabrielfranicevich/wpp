@@ -4,9 +4,7 @@ use crate::whatsapp::models::RealtimeEvent;
 pub async fn run() -> anyhow::Result<()> {
   let context = AppContext::load().await?;
 
-  let session_id = context.session.entry.id.clone();
-
-  let mut listener = context.whatsapp.listen(&session_id).await?;
+  let mut listener = context.whatsapp.listen().await?;
 
   println!("Listening for incoming messages. Press Ctrl+C to stop.");
 

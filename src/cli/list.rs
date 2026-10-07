@@ -31,7 +31,7 @@ pub async fn run(
 
   let context = AppContext::load().await?;
 
-  let service = ChatListingService::new(&context.whatsapp, &context.session.entry.id);
+  let service = ChatListingService::new(&context.whatsapp);
 
   let chats = service.list(mode, filter).await?;
 

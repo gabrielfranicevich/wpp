@@ -9,60 +9,47 @@ const MARK_READ_BATCH_SIZE: usize = 100;
 /// Application service for chat-level operations.
 pub struct ChatsService<'a> {
   whatsapp: &'a WhatsAppClient,
-  session_id: &'a str,
 }
 
 impl<'a> ChatsService<'a> {
-  pub fn new(whatsapp: &'a WhatsAppClient, session_id: &'a str) -> Self {
-    Self {
-      whatsapp,
-      session_id,
-    }
+  pub fn new(whatsapp: &'a WhatsAppClient) -> Self {
+    Self { whatsapp }
   }
 
   /// Delete a chat from WhatsApp.
   pub async fn delete_chat(&self, chat_id: &str) -> Result<(), WppError> {
-    self.whatsapp.delete_chat(self.session_id, chat_id).await
+    self.whatsapp.delete_chat(chat_id).await
   }
 
   /// Block a contact represented by a direct chat.
   pub async fn block_chat(&self, chat: &Chat) -> Result<(), WppError> {
     ensure_contact_chat(chat)?;
 
-    self.whatsapp.block_contact(self.session_id, &chat.id).await
+    self.whatsapp.block_contact(&chat.id).await
   }
 
   /// Unblock a contact represented by a direct chat.
   pub async fn unblock_chat(&self, chat: &Chat) -> Result<(), WppError> {
     ensure_contact_chat(chat)?;
 
-    self
-      .whatsapp
-      .unblock_contact(self.session_id, &chat.id)
-      .await
+    self.whatsapp.unblock_contact(&chat.id).await
   }
 
   /// Archive or unarchive a chat.
   pub async fn archive_chat(&self, chat: &Chat, archive: bool) -> Result<(), WppError> {
-    self
-      .whatsapp
-      .archive_chat(self.session_id, &chat.id, archive)
-      .await
+    self.whatsapp.archive_chat(&chat.id, archive).await
   }
 
   /// Pin or unpin a chat.
   pub async fn pin_chat(&self, chat: &Chat, pin: bool) -> Result<(), WppError> {
-    self.whatsapp.pin_chat(self.session_id, &chat.id, pin).await
+    self.whatsapp.pin_chat(&chat.id, pin).await
   }
 
   /// Mute or unmute a chat.
   pub async fn mute_chat(&self, chat: &Chat, mute: bool) -> Result<(), WppError> {
     let mute_until = if mute { Some(0) } else { None };
 
-    self
-      .whatsapp
-      .mute_chat(self.session_id, &chat.id, mute_until)
-      .await
+    self.whatsapp.mute_chat(&chat.id, mute_until).await
   }
 
   /// Mark a chat as read.
@@ -82,7 +69,7 @@ impl<'a> ChatsService<'a> {
 
     let history = self
       .whatsapp
-      .get_chat_history(self.session_id, &chat.id, requested_limit, true)
+      .get_chat_history(&chat.id, requested_limit, true)
       .await?;
 
     let mut message_ids = Vec::with_capacity(unread_count);
@@ -102,17 +89,11 @@ impl<'a> ChatsService<'a> {
     message_ids.reverse();
 
     if message_ids.is_empty() {
-      return self
-        .whatsapp
-        .mark_chat_read(self.session_id, &chat.id, &[])
-        .await;
+      return self.whatsapp.mark_chat_read(&chat.id, &[]).await;
     }
 
     for chunk in message_ids.chunks(MARK_READ_BATCH_SIZE) {
-      self
-        .whatsapp
-        .mark_chat_read(self.session_id, &chat.id, chunk)
-        .await?;
+      self.whatsapp.mark_chat_read(&chat.id, chunk).await?;
     }
 
     Ok(())
@@ -120,10 +101,7 @@ impl<'a> ChatsService<'a> {
 
   /// Mark a chat as unread.
   pub async fn mark_chat_unread(&self, chat: &Chat) -> Result<(), WppError> {
-    self
-      .whatsapp
-      .mark_chat_unread(self.session_id, &chat.id)
-      .await
+    self.whatsapp.mark_chat_unread(&chat.id).await
   }
 }
 

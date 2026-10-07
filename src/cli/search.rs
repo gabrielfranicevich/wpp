@@ -5,7 +5,7 @@ use crate::terminal::render::render_chats;
 pub async fn run(query: String) -> anyhow::Result<()> {
   let context = AppContext::load().await?;
 
-  let service = ChatListingService::new(&context.whatsapp, &context.session.entry.id);
+  let service = ChatListingService::new(&context.whatsapp);
 
   let chats = service.search(&query).await?;
 

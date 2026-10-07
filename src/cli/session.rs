@@ -83,7 +83,7 @@ async fn delete_native_session(config: &mut Config, entry: &SessionEntry) -> Res
   if storage_path.exists() {
     let client = WhatsAppClient::open_native(&storage_path).await?;
 
-    let result = client.logout(&session_id).await;
+    let result = client.logout().await;
 
     client.shutdown().await;
 

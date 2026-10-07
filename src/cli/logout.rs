@@ -44,7 +44,7 @@ pub async fn run(target: Option<String>) -> Result<()> {
   if native_path.exists() {
     let client = WhatsAppClient::open_native(&native_path).await?;
 
-    let result = client.logout(&session_id).await;
+    let result = client.logout().await;
 
     client.shutdown().await;
 

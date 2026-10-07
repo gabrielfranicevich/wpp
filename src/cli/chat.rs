@@ -40,9 +40,7 @@ pub async fn run(who: String, options: ChatOptions) -> Result<()> {
 
   let context = AppContext::load().await?;
 
-  let session_id = context.session.entry.id.clone();
-
-  let resolver = ChatResolver::new(&context.whatsapp, &session_id);
+  let resolver = ChatResolver::new(&context.whatsapp);
 
   let chat = resolver.resolve(&who).await?;
 
@@ -64,16 +62,16 @@ pub async fn run(who: String, options: ChatOptions) -> Result<()> {
     || has_read_action;
 
   if !unread && !has_management_action {
-    open_realtime_chat(&context, &session_id, &chat, false).await?;
+    open_realtime_chat(&context, &chat, false).await?;
 
     return Ok(());
   }
 
   if unread {
-    open_realtime_chat(&context, &session_id, &chat, true).await?;
+    open_realtime_chat(&context, &chat, true).await?;
   }
 
-  let service = ChatsService::new(&context.whatsapp, &session_id);
+  let service = ChatsService::new(&context.whatsapp);
 
   if has_block_action {
     if block {
@@ -138,26 +136,16 @@ pub async fn run(who: String, options: ChatOptions) -> Result<()> {
   Ok(())
 }
 
-async fn open_realtime_chat(
-  context: &AppContext,
-  session_id: &str,
-  chat: &Chat,
-  unread: bool,
-) -> Result<()> {
-  let mut listener = context.whatsapp.listen(session_id).await?;
+async fn open_realtime_chat(context: &AppContext, chat: &Chat, unread: bool) -> Result<()> {
+  let mut listener = context.whatsapp.listen().await?;
 
   if unread {
-    let mut pager = MessagePager::new_unread(
-      &context.whatsapp,
-      session_id,
-      &chat.id,
-      chat.unread_count as usize,
-    )
-    .await?;
+    let mut pager =
+      MessagePager::new_unread(&context.whatsapp, &chat.id, chat.unread_count as usize).await?;
 
     run_with_listener(chat, &mut pager, &mut listener).await?;
   } else {
-    let mut pager = MessagePager::new(&context.whatsapp, session_id, &chat.id).await?;
+    let mut pager = MessagePager::new(&context.whatsapp, &chat.id).await?;
 
     run_with_listener(chat, &mut pager, &mut listener).await?;
   }

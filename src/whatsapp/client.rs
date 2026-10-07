@@ -47,101 +47,66 @@ impl WhatsAppClient {
     self.client.shutdown().await;
   }
 
-  pub async fn logout(&self, _session_id: &str) -> Result<(), WppError> {
+  pub async fn logout(&self) -> Result<(), WppError> {
     self.client.logout().await;
 
     Ok(())
   }
 
-  pub async fn get_chat_by_id(
-    &self,
-    _session_id: &str,
-    chat_id: &str,
-  ) -> Result<Option<Chat>, WppError> {
+  pub async fn get_chat_by_id(&self, chat_id: &str) -> Result<Option<Chat>, WppError> {
     self.client.get_chat(chat_id).await
   }
 
-  pub async fn find_chats_by_phone(
-    &self,
-    _session_id: &str,
-    phone: &str,
-  ) -> Result<Vec<Chat>, WppError> {
+  pub async fn find_chats_by_phone(&self, phone: &str) -> Result<Vec<Chat>, WppError> {
     self.client.find_chats_by_phone(phone).await
   }
 
-  pub async fn list_chats(
-    &self,
-    _session_id: &str,
-    limit: usize,
-    offset: usize,
-  ) -> Result<Vec<Chat>, WppError> {
+  pub async fn list_chats(&self, limit: usize, offset: usize) -> Result<Vec<Chat>, WppError> {
     self.client.list_chats(limit, offset).await
   }
 
-  pub async fn delete_chat(&self, _session_id: &str, chat_id: &str) -> Result<(), WppError> {
+  pub async fn delete_chat(&self, chat_id: &str) -> Result<(), WppError> {
     self.client.delete_chat(chat_id).await
   }
 
-  pub async fn block_contact(&self, _session_id: &str, contact_id: &str) -> Result<(), WppError> {
+  pub async fn block_contact(&self, contact_id: &str) -> Result<(), WppError> {
     self.client.block_contact(contact_id).await
   }
 
-  pub async fn unblock_contact(&self, _session_id: &str, contact_id: &str) -> Result<(), WppError> {
+  pub async fn unblock_contact(&self, contact_id: &str) -> Result<(), WppError> {
     self.client.unblock_contact(contact_id).await
   }
 
-  pub async fn archive_chat(
-    &self,
-    _session_id: &str,
-    chat_id: &str,
-    archive: bool,
-  ) -> Result<(), WppError> {
+  pub async fn archive_chat(&self, chat_id: &str, archive: bool) -> Result<(), WppError> {
     self.client.archive_chat(chat_id, archive).await
   }
 
-  pub async fn pin_chat(
-    &self,
-    _session_id: &str,
-    chat_id: &str,
-    pin: bool,
-  ) -> Result<(), WppError> {
+  pub async fn pin_chat(&self, chat_id: &str, pin: bool) -> Result<(), WppError> {
     self.client.pin_chat(chat_id, pin).await
   }
 
-  pub async fn mute_chat(
-    &self,
-    _session_id: &str,
-    chat_id: &str,
-    mute_until: Option<i64>,
-  ) -> Result<(), WppError> {
+  pub async fn mute_chat(&self, chat_id: &str, mute_until: Option<i64>) -> Result<(), WppError> {
     self.client.mute_chat(chat_id, mute_until).await
   }
 
   pub async fn mark_chat_read(
     &self,
-    _session_id: &str,
     chat_id: &str,
     message_ids: &[String],
   ) -> Result<(), WppError> {
     self.client.mark_chat_read(chat_id, message_ids).await
   }
 
-  pub async fn mark_chat_unread(&self, _session_id: &str, chat_id: &str) -> Result<(), WppError> {
+  pub async fn mark_chat_unread(&self, chat_id: &str) -> Result<(), WppError> {
     self.client.mark_chat_unread(chat_id).await
   }
 
-  pub async fn send_text(
-    &self,
-    _session_id: &str,
-    chat_id: &str,
-    text: &str,
-  ) -> Result<(), WppError> {
+  pub async fn send_text(&self, chat_id: &str, text: &str) -> Result<(), WppError> {
     self.client.send_text(chat_id, text).await
   }
 
   pub async fn list_messages(
     &self,
-    _session_id: &str,
     chat_id: &str,
     limit: usize,
     after: Option<&str>,
@@ -155,7 +120,6 @@ impl WhatsAppClient {
   /// Get recent chat history from WhatsApp.
   pub async fn get_chat_history(
     &self,
-    _session_id: &str,
     chat_id: &str,
     limit: usize,
     deep: bool,
@@ -164,7 +128,7 @@ impl WhatsAppClient {
   }
 
   /// Open a realtime event listener for the active WhatsApp session.
-  pub async fn listen(&self, _session_id: &str) -> Result<RealtimeListener, WppError> {
+  pub async fn listen(&self) -> Result<RealtimeListener, WppError> {
     Ok(RealtimeListener {
       listener: self.client.listen().await?,
     })

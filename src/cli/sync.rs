@@ -14,7 +14,7 @@ pub async fn run(limit: Option<usize>, who: Option<String>) -> Result<()> {
 
   let session_id = context.session.entry.id.clone();
 
-  let chats = select_chats(&context, &session_id, who).await?;
+  let chats = select_chats(&context, who).await?;
 
   if chats.is_empty() {
     println!("No chats to synchronize.");
@@ -63,18 +63,14 @@ pub async fn run(limit: Option<usize>, who: Option<String>) -> Result<()> {
   Ok(())
 }
 
-async fn select_chats(
-  context: &AppContext,
-  session_id: &str,
-  who: Option<String>,
-) -> Result<Vec<Chat>> {
+async fn select_chats(context: &AppContext, who: Option<String>) -> Result<Vec<Chat>> {
   let Some(who) = who else {
-    let service = ChatListingService::new(&context.whatsapp, session_id);
+    let service = ChatListingService::new(&context.whatsapp);
 
     return Ok(service.list(ChatListMode::All, None).await?);
   };
 
-  let resolver = ChatResolver::new(&context.whatsapp, session_id);
+  let resolver = ChatResolver::new(&context.whatsapp);
 
   let mut chats = Vec::new();
   let mut seen = HashSet::new();

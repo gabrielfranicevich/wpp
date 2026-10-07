@@ -16,15 +16,11 @@ const PAGE_SIZE: usize = 1000;
 /// That functionality will be provided by `wpp search`.
 pub struct ChatResolver<'a> {
   whatsapp: &'a WhatsAppClient,
-  session_id: &'a str,
 }
 
 impl<'a> ChatResolver<'a> {
-  pub fn new(whatsapp: &'a WhatsAppClient, session_id: &'a str) -> Self {
-    Self {
-      whatsapp,
-      session_id,
-    }
+  pub fn new(whatsapp: &'a WhatsAppClient) -> Self {
+    Self { whatsapp }
   }
 
   pub async fn resolve(&self, query: &str) -> Result<Chat, WppError> {
@@ -36,17 +32,14 @@ impl<'a> ChatResolver<'a> {
       ));
     }
 
-    if let Some(chat) = self.whatsapp.get_chat_by_id(self.session_id, query).await? {
+    if let Some(chat) = self.whatsapp.get_chat_by_id(query).await? {
       return Ok(chat);
     }
 
     let normalized_query = normalize_phone(query);
 
     if !normalized_query.is_empty() {
-      let phone_matches = self
-        .whatsapp
-        .find_chats_by_phone(self.session_id, &normalized_query)
-        .await?;
+      let phone_matches = self.whatsapp.find_chats_by_phone(&normalized_query).await?;
 
       match phone_matches.as_slice() {
         [chat] => {
@@ -81,10 +74,7 @@ impl<'a> ChatResolver<'a> {
     let mut offset = 0usize;
 
     loop {
-      let page = self
-        .whatsapp
-        .list_chats(self.session_id, PAGE_SIZE, offset)
-        .await?;
+      let page = self.whatsapp.list_chats(PAGE_SIZE, offset).await?;
 
       let page_len = page.len();
       chats.extend(page);

@@ -15,13 +15,11 @@ pub async fn run(who: String, message: Vec<String>) -> anyhow::Result<()> {
 
   let context = AppContext::load().await?;
 
-  let session_id = context.session.entry.id.clone();
-
-  let resolver = ChatResolver::new(&context.whatsapp, &session_id);
+  let resolver = ChatResolver::new(&context.whatsapp);
 
   let chat = resolver.resolve(&who).await?;
 
-  send_text(&context.whatsapp, &session_id, &chat.id, &text).await?;
+  send_text(&context.whatsapp, &chat.id, &text).await?;
 
   let name = if chat.name.trim().is_empty() {
     &chat.id

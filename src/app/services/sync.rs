@@ -52,7 +52,7 @@ impl<'a> MessageSyncService<'a> {
 
       let page = self
         .whatsapp
-        .list_messages(self.session_id, &chat.id, page_limit, after.as_deref())
+        .list_messages(&chat.id, page_limit, after.as_deref())
         .await?;
 
       if page.messages.is_empty() {

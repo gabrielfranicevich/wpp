@@ -25,7 +25,6 @@ const UNREAD_LOOKBACK_EXTRA: usize = 50;
 /// user to keep scrolling backwards.
 pub struct MessagePager<'a> {
   whatsapp: &'a WhatsAppClient,
-  session_id: &'a str,
   chat_id: &'a str,
 
   messages: Vec<Message>,
@@ -35,21 +34,14 @@ pub struct MessagePager<'a> {
 }
 
 impl<'a> MessagePager<'a> {
-  pub async fn new(
-    whatsapp: &'a WhatsAppClient,
-    session_id: &'a str,
-    chat_id: &'a str,
-  ) -> Result<Self, WppError> {
-    let messages = whatsapp
-      .get_chat_history(session_id, chat_id, PAGE_SIZE, false)
-      .await?;
+  pub async fn new(whatsapp: &'a WhatsAppClient, chat_id: &'a str) -> Result<Self, WppError> {
+    let messages = whatsapp.get_chat_history(chat_id, PAGE_SIZE, false).await?;
 
     let loaded_limit = messages.len().min(PAGE_SIZE);
     let exhausted = messages.len() < PAGE_SIZE;
 
     Ok(Self {
       whatsapp,
-      session_id,
       chat_id,
       messages,
       loaded_limit,
@@ -68,14 +60,12 @@ impl<'a> MessagePager<'a> {
   /// outgoing messages, which do not contribute to the unread count.
   pub async fn new_unread(
     whatsapp: &'a WhatsAppClient,
-    session_id: &'a str,
     chat_id: &'a str,
     unread_count: usize,
   ) -> Result<Self, WppError> {
     if unread_count == 0 {
       return Ok(Self {
         whatsapp,
-        session_id,
         chat_id,
         messages: Vec::new(),
         loaded_limit: 0,
@@ -89,7 +79,7 @@ impl<'a> MessagePager<'a> {
       .min(MAX_DEEP_HISTORY);
 
     let history = whatsapp
-      .get_chat_history(session_id, chat_id, requested_limit, true)
+      .get_chat_history(chat_id, requested_limit, true)
       .await?;
 
     let messages = take_unread_messages(&history, unread_count);
@@ -97,7 +87,6 @@ impl<'a> MessagePager<'a> {
 
     Ok(Self {
       whatsapp,
-      session_id,
       chat_id,
       messages,
       loaded_limit,
@@ -112,7 +101,7 @@ impl<'a> MessagePager<'a> {
   /// the backend confirms the request. Unread-only views deliberately do not
   /// add the outgoing message because it is not part of the unread history.
   pub async fn send_text(&mut self, text: &str) -> Result<(), WppError> {
-    send_text(self.whatsapp, self.session_id, self.chat_id, text).await?;
+    send_text(self.whatsapp, self.chat_id, text).await?;
 
     if !self.unread_only {
       self.messages.push(Message {
@@ -155,7 +144,7 @@ impl<'a> MessagePager<'a> {
 
     let messages = self
       .whatsapp
-      .get_chat_history(self.session_id, self.chat_id, requested_limit, true)
+      .get_chat_history(self.chat_id, requested_limit, true)
       .await?;
 
     let previous_len = self.messages.len();

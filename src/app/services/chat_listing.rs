@@ -30,15 +30,11 @@ pub enum ChatListMode {
 /// Application service for paginated chat listing and search.
 pub struct ChatListingService<'a> {
   whatsapp: &'a WhatsAppClient,
-  session_id: &'a str,
 }
 
 impl<'a> ChatListingService<'a> {
-  pub fn new(whatsapp: &'a WhatsAppClient, session_id: &'a str) -> Self {
-    Self {
-      whatsapp,
-      session_id,
-    }
+  pub fn new(whatsapp: &'a WhatsAppClient) -> Self {
+    Self { whatsapp }
   }
 
   /// Return chats according to the requested listing mode and optional
@@ -103,10 +99,7 @@ impl<'a> ChatListingService<'a> {
 
     let fetch_limit = limit.min(PAGE_SIZE);
 
-    let mut chats = self
-      .whatsapp
-      .list_chats(self.session_id, fetch_limit, 0)
-      .await?;
+    let mut chats = self.whatsapp.list_chats(fetch_limit, 0).await?;
 
     chats.sort_by_key(|chat| Reverse(chat.timestamp));
 
@@ -121,10 +114,7 @@ impl<'a> ChatListingService<'a> {
     let mut offset = 0usize;
 
     loop {
-      let page = self
-        .whatsapp
-        .list_chats(self.session_id, PAGE_SIZE, offset)
-        .await?;
+      let page = self.whatsapp.list_chats(PAGE_SIZE, offset).await?;
 
       let page_len = page.len();
 
@@ -154,10 +144,7 @@ impl<'a> ChatListingService<'a> {
     let mut offset = 0usize;
 
     loop {
-      let page = self
-        .whatsapp
-        .list_chats(self.session_id, PAGE_SIZE, offset)
-        .await?;
+      let page = self.whatsapp.list_chats(PAGE_SIZE, offset).await?;
 
       let page_len = page.len();
 
