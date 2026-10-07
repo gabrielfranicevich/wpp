@@ -20,7 +20,10 @@ impl NativeClient {
       .await
       .map_err(|error| WppError::Other(format!("failed to find native chat: {error}")))?;
 
-    Ok(entry.map(chat_from_entry))
+    match entry {
+      Some(entry) => Ok(Some(self.chat_from_entry(entry).await?)),
+      None => Ok(None),
+    }
   }
 
   pub async fn find_chats_by_phone(&self, phone: &str) -> Result<Vec<Chat>, WppError> {
@@ -37,7 +40,10 @@ impl NativeClient {
         WppError::Other(format!("failed to find native chat by phone: {error}"))
       })?;
 
-    Ok(entry.into_iter().map(chat_from_entry).collect())
+    match entry {
+      Some(entry) => Ok(vec![self.chat_from_entry(entry).await?]),
+      None => Ok(Vec::new()),
+    }
   }
 
   pub async fn delete_chat(&self, chat_id: &str) -> Result<(), WppError> {
@@ -211,7 +217,7 @@ impl NativeClient {
 
       if start < page_len {
         for entry in page.into_iter().skip(start) {
-          chats.push(chat_from_entry(entry));
+          chats.push(self.chat_from_entry(entry).await?);
 
           if chats.len() >= limit {
             return Ok(chats);
@@ -236,33 +242,106 @@ impl NativeClient {
   }
 }
 
-fn chat_from_entry(entry: ChatEntry) -> Chat {
-  let jid = entry.jid.to_string();
+impl NativeClient {
+  async fn chat_from_entry(&self, entry: ChatEntry) -> Result<Chat, WppError> {
+    let jid = entry.jid.to_string();
+    let is_group = entry.jid.is_group();
+    let chat_name = entry.name.filter(|name| !name.trim().is_empty());
+    let contact_name = if is_group {
+      None
+    } else {
+      self
+        .chat_store
+        .contact(&entry.jid)
+        .await
+        .map_err(|error| WppError::Other(format!("failed to find native contact: {error}")))?
+        .and_then(|contact| contact.display_name().map(str::to_owned))
+        .filter(|name| !name.trim().is_empty())
+    };
 
-  let name = entry
-    .name
-    .filter(|name| !name.trim().is_empty())
-    .unwrap_or_else(|| jid.clone());
+    let name = resolve_chat_name(&jid, is_group, chat_name, contact_name);
 
-  let unread_count = if entry.unread_count < 0 {
+    Ok(Chat {
+      id: jid.clone(),
+      name,
+      is_group,
+      unread_count: map_unread_count(entry.unread_count),
+      last_message: entry.last_message_preview,
+      timestamp: entry
+        .last_message_at
+        .map(|timestamp| timestamp.timestamp())
+        .unwrap_or(0),
+    })
+  }
+}
+
+fn resolve_chat_name(
+  jid: &str,
+  is_group: bool,
+  chat_name: Option<String>,
+  contact_name: Option<String>,
+) -> String {
+  let name = if is_group {
+    chat_name
+  } else {
+    contact_name.or(chat_name)
+  };
+
+  name.unwrap_or_else(|| jid.to_owned())
+}
+
+fn map_unread_count(count: i32) -> u32 {
+  if count < 0 {
     1
   } else {
-    entry.unread_count.min(u32::MAX as i32)
-  } as u32;
-
-  Chat {
-    id: jid.clone(),
-    name,
-    is_group: entry.jid.is_group(),
-    unread_count,
-    last_message: entry.last_message_preview,
-    timestamp: entry
-      .last_message_at
-      .map(|timestamp| timestamp.timestamp())
-      .unwrap_or(0),
+    count as u32
   }
 }
 
 pub(super) fn normalize_phone(value: &str) -> String {
   value.chars().filter(|c| c.is_ascii_digit()).collect()
+}
+
+#[cfg(test)]
+mod tests {
+  use super::{map_unread_count, resolve_chat_name};
+
+  #[test]
+  fn direct_chat_prefers_contact_name() {
+    assert_eq!(
+      resolve_chat_name(
+        "123@s.whatsapp.net",
+        false,
+        Some("Chat row".to_owned()),
+        Some("Contact".to_owned()),
+      ),
+      "Contact"
+    );
+  }
+
+  #[test]
+  fn group_chat_uses_chat_name() {
+    assert_eq!(
+      resolve_chat_name(
+        "123@g.us",
+        true,
+        Some("Group".to_owned()),
+        Some("Contact".to_owned()),
+      ),
+      "Group"
+    );
+  }
+
+  #[test]
+  fn chat_name_falls_back_to_jid() {
+    assert_eq!(resolve_chat_name("123@lid", false, None, None), "123@lid");
+  }
+
+  #[test]
+  fn unread_count_maps_negative_sentinel_without_overflow() {
+    assert_eq!(map_unread_count(-1), 1);
+    assert_eq!(map_unread_count(-12), 1);
+    assert_eq!(map_unread_count(0), 0);
+    assert_eq!(map_unread_count(42), 42);
+  }
 }
