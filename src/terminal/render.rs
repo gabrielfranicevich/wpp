@@ -23,6 +23,7 @@ pub fn render_chats(chats: &[Chat]) {
     };
 
     let kind = if chat.is_group { "G" } else { " " };
+    let pinned = if chat.is_pinned { "📍" } else { " " };
 
     let name = truncate(
       if chat.name.trim().is_empty() {
@@ -49,7 +50,7 @@ pub fn render_chats(chats: &[Chat]) {
     };
 
     println!(
-      " {marker} {kind} {name:<NAME_WIDTH$} {age:>4} {unread:>4} {preview}",
+      " {marker} {kind}{pinned} {name:<NAME_WIDTH$} {age:>4} {unread:>4} {preview}",
       NAME_WIDTH = NAME_WIDTH,
     );
   }

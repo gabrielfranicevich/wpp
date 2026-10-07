@@ -4,6 +4,7 @@ pub struct Chat {
   pub id: String,
   pub name: String,
   pub is_group: bool,
+  pub is_pinned: bool,
   pub unread_count: u32,
   pub last_message: Option<String>,
   pub timestamp: i64,

@@ -718,7 +718,12 @@ The `whatsapp/native` module is the only WhatsApp transport implementation.
 
 * `wpp list --dm`
 * `wpp list --groups`
+* `wpp list --show-archive`
 * Interactive chat selector
+
+**Realtime:**
+
+* `wpp listen --show-muted`
 
 **Pager:**
 

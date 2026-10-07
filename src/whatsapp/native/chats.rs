@@ -250,13 +250,7 @@ impl NativeClient {
     let contact_name = if is_group {
       None
     } else {
-      self
-        .chat_store
-        .contact(&entry.jid)
-        .await
-        .map_err(|error| WppError::Other(format!("failed to find native contact: {error}")))?
-        .and_then(|contact| contact.display_name().map(str::to_owned))
-        .filter(|name| !name.trim().is_empty())
+      self.contact_name(&entry.jid).await?
     };
 
     let name = resolve_chat_name(&jid, is_group, chat_name, contact_name);
@@ -265,6 +259,7 @@ impl NativeClient {
       id: jid.clone(),
       name,
       is_group,
+      is_pinned: entry.pinned_at.is_some(),
       unread_count: map_unread_count(entry.unread_count),
       last_message: entry.last_message_preview,
       timestamp: entry
@@ -272,6 +267,47 @@ impl NativeClient {
         .map(|timestamp| timestamp.timestamp())
         .unwrap_or(0),
     })
+  }
+
+  async fn contact_name(&self, jid: &whatsapp_rust::Jid) -> Result<Option<String>, WppError> {
+    if let Some(name) = self.contact_name_for_jid(jid).await? {
+      return Ok(Some(name));
+    }
+
+    let mapping = self
+      .client
+      .get_lid_pn_entry(jid)
+      .await
+      .map_err(|error| WppError::Other(format!("failed to resolve contact identity: {error}")))?;
+
+    let Some(mapping) = mapping else {
+      return Ok(None);
+    };
+
+    let alternate_jid = if jid.is_lid() {
+      whatsapp_rust::Jid::pn(mapping.phone_number.to_string())
+    } else {
+      whatsapp_rust::Jid::lid(mapping.lid.to_string())
+    };
+
+    self.contact_name_for_jid(&alternate_jid).await
+  }
+
+  async fn contact_name_for_jid(
+    &self,
+    jid: &whatsapp_rust::Jid,
+  ) -> Result<Option<String>, WppError> {
+    let contact = self
+      .chat_store
+      .contact(jid)
+      .await
+      .map_err(|error| WppError::Other(format!("failed to find native contact: {error}")))?;
+
+    Ok(
+      contact
+        .and_then(|contact| contact.display_name().map(str::to_owned))
+        .filter(|name| !name.trim().is_empty()),
+    )
   }
 }
 

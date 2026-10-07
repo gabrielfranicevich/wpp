@@ -101,7 +101,7 @@ impl<'a> ChatListingService<'a> {
 
     let mut chats = self.whatsapp.list_chats(fetch_limit, 0).await?;
 
-    chats.sort_by_key(|chat| Reverse(chat.timestamp));
+    sort_chats(&mut chats);
 
     Self::apply_filter(&mut chats, filter);
 
@@ -127,7 +127,7 @@ impl<'a> ChatListingService<'a> {
       offset += page_len;
     }
 
-    chats.sort_by_key(|chat| Reverse(chat.timestamp));
+    sort_chats(&mut chats);
 
     Self::apply_filter(&mut chats, filter);
 
@@ -156,7 +156,7 @@ impl<'a> ChatListingService<'a> {
             if unread_chats.len() >= limit {
               unread_chats.truncate(limit);
 
-              unread_chats.sort_by_key(|chat| Reverse(chat.timestamp));
+              sort_chats(&mut unread_chats);
 
               return Ok(unread_chats);
             }
@@ -171,7 +171,7 @@ impl<'a> ChatListingService<'a> {
       offset += page_len;
     }
 
-    unread_chats.sort_by_key(|chat| Reverse(chat.timestamp));
+    sort_chats(&mut unread_chats);
 
     Ok(unread_chats)
   }
@@ -197,13 +197,17 @@ fn matches_search_query(chat: &Chat, query_lower: &str, normalized_phone: &str) 
   !normalized_phone.is_empty() && normalize_phone(&chat.id).contains(normalized_phone)
 }
 
+fn sort_chats(chats: &mut [Chat]) {
+  chats.sort_by_key(|chat| Reverse((chat.is_pinned, chat.timestamp)));
+}
+
 fn normalize_phone(value: &str) -> String {
   value.chars().filter(|c| c.is_ascii_digit()).collect()
 }
 
 #[cfg(test)]
 mod tests {
-  use super::{matches_search_query, normalize_phone};
+  use super::{matches_search_query, normalize_phone, sort_chats};
   use crate::whatsapp::models::Chat;
 
   fn chat(name: &str, id: &str, is_group: bool) -> Chat {
@@ -211,6 +215,7 @@ mod tests {
       id: id.to_string(),
       name: name.to_string(),
       is_group,
+      is_pinned: false,
       unread_count: 0,
       last_message: None,
       timestamp: 0,
@@ -255,5 +260,29 @@ mod tests {
     let chat = chat("Universidad", "120363000000000000@g.us", true);
 
     assert!(matches_search_query(&chat, "universidad", "",));
+  }
+
+  #[test]
+  fn pinned_chats_are_sorted_before_recent_activity() {
+    let mut chats = vec![
+      chat("Recent", "1@s.whatsapp.net", false),
+      chat("Pinned old", "2@s.whatsapp.net", false),
+      chat("Pinned new", "3@s.whatsapp.net", false),
+    ];
+    chats[1].is_pinned = true;
+    chats[1].timestamp = 10;
+    chats[2].is_pinned = true;
+    chats[2].timestamp = 20;
+    chats[0].timestamp = 100;
+
+    sort_chats(&mut chats);
+
+    assert_eq!(
+      chats
+        .iter()
+        .map(|chat| chat.name.as_str())
+        .collect::<Vec<_>>(),
+      ["Pinned new", "Pinned old", "Recent"]
+    );
   }
 }
