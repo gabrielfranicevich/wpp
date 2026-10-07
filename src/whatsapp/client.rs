@@ -1,8 +1,11 @@
 use std::path::Path;
+use std::time::Duration;
 
 use crate::error::WppError;
 use crate::whatsapp::models::{Chat, Message, MessagePage, RealtimeEvent};
 use crate::whatsapp::native::{NativeAuthMode, NativeClient, NativeRealtimeListener};
+
+const CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Realtime listener exposed by the WhatsApp abstraction layer.
 pub struct RealtimeListener {
@@ -38,6 +41,11 @@ impl WhatsAppClient {
   /// requesting a new authentication flow.
   pub async fn open_native(storage_path: &Path) -> Result<Self, WppError> {
     let client = NativeClient::open(storage_path, NativeAuthMode::None).await?;
+
+    if let Err(error) = client.wait_for_connected(CONNECTION_TIMEOUT).await {
+      client.shutdown().await;
+      return Err(error);
+    }
 
     Ok(Self::native(client))
   }

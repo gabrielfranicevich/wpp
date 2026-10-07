@@ -119,11 +119,12 @@ impl NativeClient {
       WppError::Other(format!("failed to build native WhatsApp client: {error}"))
     })?;
 
-    let handle = bot.spawn();
-
-    let client = handle.client();
-
+    let client = bot.client();
     let chat_store_subscription = client.subscribe_handler(chat_store.handler());
+
+    // Register the store before the connection starts so it receives the
+    // initial history sync and app-state updates.
+    let handle = bot.spawn();
 
     let client = handle.client();
 
