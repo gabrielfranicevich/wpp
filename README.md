@@ -352,7 +352,8 @@ wpp session -D <TARGET>
 
 ### `wpp list`
 
-List chats, most recent first.
+List chats with pinned chats first, followed by the most recently active chats.
+Pinned chats are marked with `📍`.
 
 The default limit is 50 chats.
 
@@ -602,8 +603,10 @@ wpp/
     │   ├── config.rs
     │   ├── state.rs
     │   └── services/
+    │       ├── chat_listing.rs
     │       ├── chats.rs
     │       ├── chat_resolver.rs
+    │       ├── message_pager.rs
     │       ├── messages.rs
     │       └── sync.rs
     │
@@ -613,6 +616,7 @@ wpp/
     │
     ├── terminal/
     │   ├── mod.rs
+    │   ├── composer.rs
     │   ├── pager.rs
     │   └── render.rs
     │
@@ -622,7 +626,11 @@ wpp/
         ├── models.rs
         └── native/
             ├── mod.rs
-            └── client.rs
+            ├── auth.rs
+            ├── chats.rs
+            ├── client.rs
+            ├── messages.rs
+            └── realtime.rs
 ```
 
 The `whatsapp/native` module is the only WhatsApp transport implementation.
@@ -655,7 +663,8 @@ The `whatsapp/native` module is the only WhatsApp transport implementation.
 * Full chat listing
 * Unread chat selection
 * Unread filtering
-* Most-recent-first sorting
+* Pinned-first, most-recent-next sorting
+* Pinned chat indicator (`📍`)
 * Exact chat ID resolution
 * Exact phone-number resolution
 * Case-insensitive name resolution
@@ -738,6 +747,29 @@ The `whatsapp/native` module is the only WhatsApp transport implementation.
 * Polls
 * Contacts
 * Rich message types
+* Display the delivery state of sent messages (failed, sent, received, and seen)
+
+Planned send commands:
+
+```bash
+# --caption is optional
+wpp send <CONTACT> --file <path> [--caption <caption>]
+
+# --caption, --HD, and --GIF are optional
+wpp send <CONTACT> --video <path> [--caption <caption>] [--HD] [--GIF]
+
+# --caption and --HD are optional
+wpp send <CONTACT> --photo <path> [--caption <caption>] [--HD]
+
+# --animated is optional and defaults to false
+wpp send <CONTACT> --sticker <path> [--animated <true|false>]
+
+# --name and --address are optional
+wpp send <CONTACT> --location <latitude> <longitude> [--name <name>] [--address <address>]
+
+# --multiple is optional and defaults to false
+wpp send <CONTACT> --poll <question> <option1> <option2> ... [--multiple <true|false>]
+```
 
 **Chat interaction:**
 
@@ -750,8 +782,8 @@ The `whatsapp/native` module is the only WhatsApp transport implementation.
 **Calls:**
 
 ```bash
-wpp call <CONTACT>
-wpp call <CONTACT> --video
+wpp chat <contact> --call
+wpp chat <contact> --video-call
 ```
 
 * * *
